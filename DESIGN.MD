@@ -300,8 +300,24 @@ This is a living section and will be updated as we progress.
     *   `Dockerfile` for Vite dev server (or for building static assets later).
 *   **Task:** Configure PostgreSQL service in `docker-compose.yml` with a persistent volume.
 *   **Task:** Ensure all services can be started with `docker-compose up --build`.
-*   **DONE:** [ ]
-*   **NEXT:** Phase 1
+*   **DONE:**
+    *   [x] Initialize GitHub repository (`side-stacker-game`).
+    *   [x] Add this `DESIGN.MD` (v0.3.2) to the repository root. (Also added README.md, .gitignore)
+    *   [x] Create root `docker-compose.yml` defining services: `backend`, `frontend`, `db`.
+    *   [x] Configure PostgreSQL service in `docker-compose.yml` with a persistent volume. (Done as part of docker-compose.yml creation)
+    *   [x] Setup `backend/` directory:
+        *   [x] `Dockerfile` for Python/FastAPI.
+        *   [x] `requirements.txt`.
+        *   [x] `pyproject.toml`.
+        *   [x] Basic FastAPI app structure (`app/main.py`, `app/core/config.py`, `.env.example`, `.env`).
+        *   [x] Health check endpoint in FastAPI (`/api/v1/health`).
+    *   [x] Setup `frontend/` directory:
+        *   [x] Initialize React + **JavaScript** project using Vite.
+        *   [x] Install Prettier.
+        *   [x] Create `.prettierrc.js`.
+        *   [x] Add Prettier script to `package.json`.
+        *   [x] `Dockerfile` for Vite dev server.
+    *   [x] Ensure all services can be started with `docker-compose up --build` and verified.
 
 ### Phase 1: Core Game Logic & Basic Backend (No DB/WebSockets yet)
 *   **Task:** Implement Python game logic in `backend/app/services/game_logic.py` (board creation, move validation, apply move, win/draw checks).
