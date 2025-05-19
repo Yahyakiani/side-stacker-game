@@ -16,7 +16,6 @@ else:
 class Settings(BaseSettings):
     PROJECT_NAME: str = "Side-Stacker Game"
     API_V1_STR: str = "/api/v1"
-
     DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://user:password@host:port/db")
 
     # We can add more settings here as needed

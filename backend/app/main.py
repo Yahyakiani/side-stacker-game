@@ -1,44 +1,54 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-# from app.core.config import settings # We'll create this later
-# from app.api.v1.endpoints import game_ws # We'll create this later
+from app.core.config import settings # Ensure this import works
+from app.api.v1.endpoints import temp_game_http # Import the new router
 
-app = FastAPI(title="Side-Stacker Game API", version="0.1.0")
+app = FastAPI(
+    title=settings.PROJECT_NAME,
+    openapi_url=f"{settings.API_V1_STR}/openapi.json"
+)
 
 # CORS (Cross-Origin Resource Sharing) middleware
-# Allows your frontend (running on a different port/domain) to communicate with the backend.
-# Adjust origins as necessary for production.
 origins = [
     "http://localhost",
     "http://localhost:5173", # Default Vite frontend port
-    # Add your deployed frontend URL here later
 ]
+if hasattr(settings, 'CORS_ORIGINS') and settings.CORS_ORIGINS: # If defined in config
+    origins.extend([str(origin) for origin in settings.CORS_ORIGINS if str(origin) not in origins])
+
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"], # Allows all methods
-    allow_headers=["*"], # Allows all headers
+    allow_methods=["*"], 
+    allow_headers=["*"], 
 )
 
 @app.get("/")
 async def root():
-    return {"message": "Welcome to Side-Stacker Game API"}
+    return {"message": f"Welcome to {settings.PROJECT_NAME} API"}
 
-@app.get("/api/v1/health", tags=["Health"])
+@app.get(f"{settings.API_V1_STR}/health", tags=["Health"])
 async def health_check():
     """
     Simple health check endpoint.
     """
     return {"status": "healthy"}
 
-# TODO: Later, include routers for WebSockets and other API endpoints
-# app.include_router(game_ws.router, prefix="/api/v1/ws", tags=["Game WebSocket"])
+# Include the temporary HTTP game router
+app.include_router(
+    temp_game_http.router, 
+    prefix=f"{settings.API_V1_STR}/temp-game", # Prefix for these temp endpoints
+    tags=["Temporary HTTP Game (In-Memory)"]    # Tag for OpenAPI docs
+)
+
+
+# TODO: Later, include routers for WebSockets
+# from app.api.v1.endpoints import game_ws
+# app.include_router(game_ws.router, prefix=f"{settings.API_V1_STR}/ws", tags=["Game WebSocket"])
 
 if __name__ == "__main__":
     import uvicorn
-    # This is for running directly with `python app/main.py` if needed,
-    # but Docker will use the CMD in Dockerfile.
     uvicorn.run(app, host="0.0.0.0", port=8000)

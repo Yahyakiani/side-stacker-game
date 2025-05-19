@@ -323,8 +323,11 @@ This is a living section and will be updated as we progress.
 *   **Task:** Implement Python game logic in `backend/app/services/game_logic.py` (board creation, move validation, apply move, win/draw checks).
 *   **Task:** Write unit tests for `game_logic.py` using `pytest` in `backend/tests/`.
 *   **Task:** Create temporary HTTP FastAPI endpoints to test game logic interactively (e.g., create game, make move, get board - all in-memory for now).
-*   **DONE:** [ ]
-*   **NEXT:** Phase 2
+*   **DONE:**
+    *   [x] Implemented Python game logic in `backend/app/services/game_logic.py`.
+    *   [x] Wrote unit tests for `game_logic.py` using `pytest`.
+    *   [x] Created and verified temporary HTTP FastAPI endpoints (`/api/v1/temp-game`) for interactive testing of game logic (in-memory).
+
 
 ### Phase 2: Database Integration
 *   **Task:** Define SQLAlchemy models (`Game`) in `backend/app/db/models.py`.
