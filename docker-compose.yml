@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app  # Mounts the backend code into the container for live reloading
+    env_file:
+      - ./backend/.env # We'll create this later for environment variables
+    depends_on:
+      db:
+        condition: service_healthy # Ensures DB is ready before backend starts
+    networks:
+      - side_stacker_network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173" # Default Vite port
+    volumes:
+      - ./frontend:/app # Mounts the frontend code
+      - /app/node_modules # Prevents local node_modules from overwriting container's
+    networks:
+      - side_stacker_network
+
+  db:
+    image: postgres:15-alpine # Using PostgreSQL 15 on Alpine Linux for a smaller image
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/ # Persistent storage for DB
+    ports:
+      - "5432:5432" # Expose PostgreSQL port (optional, for direct DB access if needed)
+    environment:
+      - POSTGRES_USER=stackeruser
+      - POSTGRES_PASSWORD=stackerpassword
+      - POSTGRES_DB=side_stacker_db
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stackeruser -d side_stacker_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - side_stacker_network
+
+volumes:
+  postgres_data: # Defines the named volume for persistent DB data
+
+networks:
+  side_stacker_network:
+    driver: bridge
