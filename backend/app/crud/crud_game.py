@@ -61,57 +61,58 @@ def create_game_db(
 def update_game_state(
     db: Session,
     game_id: uuid.UUID,
-    board_state: Optional[
-        Dict[str, Any]
-    ] = None,  # e.g. {"board": List[List[str|None]]}
-    current_player_token: Optional[str] = None,
+    board_state: Optional[Dict[str, Any]] = None,
+    current_player_token: Optional[str] = "SENTINEL_DEFAULT",  # Use a sentinel
     status: Optional[str] = None,
-    winner_token: Optional[str] = None,  # Can be None or "draw" conceptually
+    winner_token: Optional[str] = "SENTINEL_DEFAULT",  # Use a sentinel
+    player1_token: Optional[str] = "SENTINEL_DEFAULT",  # Use a sentinel
+    player2_token: Optional[str] = "SENTINEL_DEFAULT",  # Use a sentinel
 ) -> Optional[Game]:
-    """
-    Updates the state of an existing game.
-    Only updates fields that are provided (not None).
-    """
     db_game = get_game(db, game_id)
     if not db_game:
         return None
 
-    update_data = {}
-    if board_state is not None:
-        update_data["board_state"] = board_state
+    updated_fields_count = 0
+
     if (
-        current_player_token is not None
-        or current_player_token is None
-        and "current_player_token" in locals()
-    ):  # to allow setting to None
-        update_data["current_player_token"] = current_player_token
-    if status is not None:
-        update_data["status"] = status
-    if (
-        winner_token is not None or winner_token is None and "winner_token" in locals()
-    ):  # to allow setting to None
-        update_data["winner_token"] = winner_token
+        board_state is not None
+    ):  # board_state is not optional in the same way as others for this func
+        db_game.board_state = board_state
+        flag_modified(db_game, "board_state")
+        updated_fields_count += 1
 
-    if not update_data:  # Nothing to update
-        return db_game
+    if status is not None:  # status also typically provided if changing
+        db_game.status = status
+        updated_fields_count += 1
 
-    for key, value in update_data.items():
-        setattr(db_game, key, value)
-        if key == "board_state":  # If board_state was updated
-            flag_modified(db_game, "board_state")
+    # For fields that can be explicitly set to None if a value (even None) is passed,
+    # or remain unchanged if the sentinel default is kept by the caller.
+    if current_player_token != "SENTINEL_DEFAULT":
+        db_game.current_player_token = current_player_token
+        updated_fields_count += 1
 
-    print(
-        f"DEBUG: Updating game {db_game.id} with board_state: {db_game.board_state}"
-    )  # ADD THIS LINE
-    print(
-        f"DEBUG: Updating game {db_game.id} with current_player: {db_game.current_player_token}"
-    )
-    # db_game.updated_at will be updated by the DB due to onupdate=func.now()
-    db.add(
-        db_game
-    )  # Not strictly necessary if only modifying existing fields of a tracked object
+    if winner_token != "SENTINEL_DEFAULT":
+        db_game.winner_token = winner_token
+        updated_fields_count += 1
+
+    if player1_token != "SENTINEL_DEFAULT":  # Only update if not sentinel
+        db_game.player1_token = player1_token
+        updated_fields_count += 1
+
+    if player2_token != "SENTINEL_DEFAULT":  # Only update if not sentinel
+        db_game.player2_token = player2_token
+        updated_fields_count += 1
+
+    if updated_fields_count == 0:
+        # No actual updates were requested for the fields this function handles
+        # based on the parameters passed (excluding game_id which is for lookup)
+        return db_game  # Return the fetched game without commit/refresh
+
+    # print(f"DEBUG crud: About to commit updates for game {db_game.id} - P1: {db_game.player1_token}, P2: {db_game.player2_token}, Status: {db_game.status}, CurrentP: {db_game.current_player_token}")
+
     db.commit()
     db.refresh(db_game)
+    # print(f"DEBUG crud: After commit for game {db_game.id} - P1: {db_game.player1_token}, P2: {db_game.player2_token}, Status: {db_game.status}, CurrentP: {db_game.current_player_token}")
     return db_game
 
 
