@@ -25,7 +25,6 @@ services:
       - "5173:5173" # Default Vite port
     volumes:
       - ./frontend:/app # Mounts the frontend code
-      - /app/node_modules # Prevents local node_modules from overwriting container's
     networks:
       - side_stacker_network
 
