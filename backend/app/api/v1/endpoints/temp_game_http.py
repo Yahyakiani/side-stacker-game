@@ -11,7 +11,7 @@ from app.services.game_logic import (
     PLAYER_X,
     PLAYER_O,
     Board as GameLogicBoard,
-    create_board as service_create_board,  # <<< --- ADDED THIS IMPORT ---
+    create_board as service_create_board,
 )
 from app.schemas.game import GameStateResponse, MoveRequest, BoardSchema
 from app.db.session import get_db

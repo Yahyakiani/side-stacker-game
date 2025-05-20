@@ -2,16 +2,13 @@ from sqlalchemy.orm import Session
 from typing import Optional, Dict, Any, List
 import uuid
 from sqlalchemy.orm.attributes import flag_modified
-from app.db.models import Game  # Your Game SQLAlchemy model
+from app.db.models import Game  # Game SQLAlchemy model
 from app.schemas.game import (
     GameStateResponse,
 )  # For type hinting return, though not strictly required here
 from app.services.game_logic import (
     create_board as service_create_board,
 )  # Renaming to avoid conflict
-
-# For now, we'll focus on Create and Get. Update will be more complex with game logic.
-# Delete might not be immediately necessary for active gameplay.
 
 
 def get_game(db: Session, game_id: uuid.UUID) -> Optional[Game]:

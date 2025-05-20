@@ -361,17 +361,27 @@ This is a living section and will be updated as we progress.
     *   [x] Connected `GameSetup` and `GamePage` to create a game via WebSocket and display game details.
 *   **NEXT:** Phase 4
 
-### Phase 4: Full PvP Gameplay via WebSockets
-*   **Task:** Implement full WebSocket messaging lifecycle in FastAPI for PvP: handling `JOIN_GAME`, `MAKE_MOVE`. Process moves using `game_logic.py`, update DB, and broadcast `GAME_START`, `GAME_UPDATE`, `GAME_OVER`, `ERROR` messages.
-*   **Task:** Backend logic for turn management, player identification (X/O assignment).
-*   **Task:** Frontend (`GamePage.jsx`, `Board.jsx`, `Controls.jsx`):
-    *   Allow joining an existing game (if supporting direct join by ID, or automatic pairing).
-    *   Full board interactivity for making moves; send `MAKE_MOVE` via WebSocket.
-    *   Dynamically update `Board.jsx` and `GameInfo.jsx` based on `GAME_UPDATE`, `GAME_START` from server.
+Phase 4: Full PvP Gameplay via WebSockets
+*   **Task:** Implement full WebSocket messaging for PvP: `JOIN_GAME`, `MAKE_MOVE`, `GAME_START`, `GAME_UPDATE`, `GAME_OVER`, `ERROR`.
+*   **Task:** Backend logic to handle two players connecting to the same game, turn management, and broadcasting updates.
+*   **Task:** React frontend:
+    *   Full board interactivity for making moves (sending `MAKE_MOVE`).
+    *   Dynamic updates to `Board.jsx` and `GameInfo.jsx` based on `GAME_UPDATE` from server.
     *   Display win/loss/draw messages based on `GAME_OVER`.
-    *   Clearly indicate whose turn it is and what piece each player is.
-*   **DONE:** [ ]
-*   **NEXT:** Phase 5
+    *   Handle player roles (X/O, whose turn).
+*   **DONE:**
+    *   [x] Implemented backend WebSocket handlers for `JOIN_GAME` and `MAKE_MOVE`.
+    *   [x] Backend sends `GAME_START` to both players upon P2 join.
+    *   [x] Backend processes moves, updates DB, and broadcasts `GAME_UPDATE` or `GAME_OVER`.
+    *   [x] Basic turn management (player token switching) implemented in backend.
+    *   [x] Frontend `socketService.js` updated with `makeMove` function.
+    *   [x] Frontend `GamePage.jsx` now:
+        *   Handles `GAME_START`, `GAME_UPDATE`, `GAME_OVER` messages.
+        *   Renders `Board` and `Controls` components.
+        *   Allows sending `MAKE_MOVE` messages based on UI interaction.
+        *   Updates UI based on `GAME_UPDATE` (board, current player).
+        *   (Initial display for win/loss/draw messages present, "black screen" to be polished).
+*   **NEXT:** Refine frontend UI for `GameInfo` (clear turn/winner display), `Board` (better cell interaction/feedback), and ensure robust "game over" screen. Then, Phase 5: Player vs AI (Easy Bot).
 
 ### Phase 5: Player vs AI (Easy Bot)
 *   **Task:** Implement `EasyAIBot` logic in `backend/app/services/ai/easy_bot.py`.

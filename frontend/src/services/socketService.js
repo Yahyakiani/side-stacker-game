@@ -115,6 +115,20 @@ export const createGame = (mode = 'PVP', aiDifficulty = null) => {
 
 export const getSocket = () => socket // To allow components to check socket state if needed
 
+export const makeMove = (gameId, playerToken, row, side) => {
+    if (!gameId || !playerToken) {
+        console.error("makeMove: gameId and playerToken are required.")
+        // Optionally call onErrorCallback if it's set
+        return;
+    }
+    const payload = {
+        game_id: gameId, // Though game_id is implicit in the server's room management, sending it is fine
+        player_token: playerToken,
+        row: parseInt(row, 10), // Ensure row is an integer
+        side: side.toUpperCase()
+    }
+    sendMessage({ type: "MAKE_MOVE", payload })
+}
 // No disconnect function exposed directly for now, relies on browser closing or server.
 // Could add one if manual disconnect from UI is needed.
 // export const disconnectWebSocket = () => {
