@@ -330,14 +330,20 @@ This is a living section and will be updated as we progress.
 
 
 ### Phase 2: Database Integration
-*   **Task:** Define SQLAlchemy models (`Game`) in `backend/app/db/models.py`.
-*   **Task:** Setup Alembic for database migrations in `backend/app/db/` and `backend/alembic.ini`.
-*   **Task:** Create initial Alembic migration for the `games` table and run it.
-*   **Task:** Implement database session management (`backend/app/db/session.py`) and dependency injection for FastAPI.
-*   **Task:** Implement CRUD operations for `Game` (`backend/app/crud/crud_game.py`).
-*   **Task:** Modify backend (temporary HTTP endpoints) to persist game state in PostgreSQL.
-*   **DONE:** [ ]
-*   **NEXT:** Phase 3
+*   **Task:** Define SQLAlchemy models for `Game` in `backend/app/db/models.py`.
+*   **Task:** Setup Alembic for database migrations (`backend/app/db/migrations/`).
+*   **Task:** Create initial migration for the `games` table.
+*   **Task:** Implement database session management in FastAPI (`backend/app/db/session.py`).
+*   **Task:** Implement CRUD operations for games (`backend/app/crud/crud_game.py`).
+*   **Task:** Modify backend game management (the temporary HTTP endpoints for now, later WebSockets) to save and load game state from PostgreSQL instead of in-memory.
+*   **DONE:**
+    *   [x] Defined SQLAlchemy `Game` model.
+    *   [x] Setup Alembic and configured `env.py`.
+    *   [x] Created and applied initial migration for `games` table.
+    *   [x] Implemented `get_db` session management.
+    *   [x] Implemented `crud_game.py` with `get_game`, `create_game_db`, `update_game_state`.
+    *   [x] Modified temporary HTTP endpoints (`temp_game_http.py`) to use the database for all game operations (create, get state, make move). Verified database persistence of moves.
+*   **NEXT:** Phase 3: Basic Frontend & WebSocket Foundation
 
 ### Phase 3: Basic Frontend & WebSocket Foundation
 *   **Task:** Install and setup Chakra UI in the `frontend/` (JavaScript React) project. Define a basic theme.
