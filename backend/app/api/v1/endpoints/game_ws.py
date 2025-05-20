@@ -12,6 +12,10 @@ from app.services.game_logic import (
     PLAYER_X,
     PLAYER_O,
     Board as GameLogicBoard,
+    is_valid_move,
+    apply_move,
+    check_win,
+    check_draw,
 )  # For type hinting and constants
 from app.services.game_logic import create_board as service_create_board
 
@@ -341,15 +345,218 @@ async def websocket_endpoint(
                             )
 
                 elif message_type == "MAKE_MOVE":
-                    # To be implemented in Phase 4
-                    await manager.send_personal_message(
-                        {
-                            "type": "ERROR",
-                            "payload": {"message": "MAKE_MOVE not yet implemented."},
-                        },
-                        websocket,
+                    if not active_game_id:
+                        await manager.send_personal_message(
+                            {
+                                "type": "ERROR",
+                                "payload": {
+                                    "message": "No active game to make a move in. Create or join a game first."
+                                },
+                            },
+                            websocket,
+                        )
+                        continue
+
+                    # Payload example: {"player_token": "actual_player_token", "row": int, "side": "L" | "R"}
+                    player_token_from_msg = payload.get("player_token")
+                    row = payload.get("row")
+                    side = payload.get("side")
+
+                    if None in [player_token_from_msg, row, side] or side not in [
+                        "L",
+                        "R",
+                    ]:
+                        await manager.send_personal_message(
+                            {
+                                "type": "ERROR",
+                                "payload": {
+                                    "message": "Invalid MAKE_MOVE payload. Required: player_token, row, side."
+                                },
+                            },
+                            websocket,
+                        )
+                        continue
+
+                    # Fetch the game from DB
+                    try:
+                        game_uuid = uuid.UUID(active_game_id)
+                    except (
+                        ValueError
+                    ):  # Should not happen if active_game_id is always a valid UUID string
+                        await manager.send_personal_message(
+                            {
+                                "type": "ERROR",
+                                "payload": {
+                                    "message": "Internal server error: Invalid game ID format."
+                                },
+                            },
+                            websocket,
+                        )
+                        continue
+
+                    db_game = crud_game.get_game(db, game_id=game_uuid)
+                    if not db_game:
+                        await manager.send_personal_message(
+                            {
+                                "type": "ERROR",
+                                "payload": {"message": "Game not found."},
+                            },
+                            websocket,
+                        )
+                        active_game_id = None  # Reset as this game ID is invalid
+                        continue  # Or disconnect
+
+                    if db_game.status != "active":
+                        await manager.send_personal_message(
+                            {
+                                "type": "ERROR",
+                                "payload": {
+                                    "message": f"Game is not active. Current status: {db_game.status}"
+                                },
+                            },
+                            websocket,
+                        )
+                        continue
+
+                    if db_game.current_player_token != player_token_from_msg:
+                        await manager.send_personal_message(
+                            {"type": "ERROR", "payload": {"message": "Not your turn."}},
+                            websocket,
+                        )
+                        continue
+
+                    # Determine player's piece (X or O)
+                    player_piece = None
+                    if db_game.player1_token == player_token_from_msg:
+                        player_piece = PLAYER_X
+                    elif db_game.player2_token == player_token_from_msg:
+                        player_piece = PLAYER_O
+
+                    if not player_piece:
+                        await manager.send_personal_message(
+                            {
+                                "type": "ERROR",
+                                "payload": {
+                                    "message": "Player token not recognized for this game."
+                                },
+                            },
+                            websocket,
+                        )
+                        continue
+
+                    current_board_list: GameLogicBoard = db_game.board_state.get(
+                        "board", service_create_board()
                     )
-                    pass
+
+                    if not is_valid_move(current_board_list, row, side):
+                        await manager.send_personal_message(
+                            {
+                                "type": "ERROR",
+                                "payload": {"message": "Invalid move on the board."},
+                            },
+                            websocket,
+                        )
+                        continue
+
+                    placed_coords = apply_move(
+                        current_board_list, row, side, player_piece
+                    )
+                    if not placed_coords:  # Should be caught by is_valid_move above
+                        await manager.send_personal_message(
+                            {
+                                "type": "ERROR",
+                                "payload": {
+                                    "message": "Failed to apply move after validation."
+                                },
+                            },
+                            websocket,
+                        )
+                        continue
+
+                    new_board_state_json = {"board": current_board_list}
+                    new_status = db_game.status
+                    new_winner_token = db_game.winner_token
+                    next_player_token = None
+
+                    game_over = False
+                    if check_win(current_board_list, player_piece, placed_coords):
+                        new_status = f"player_{player_piece.lower()}_wins"
+                        new_winner_token = player_token_from_msg
+                        game_over = True
+                    elif check_draw(current_board_list):
+                        new_status = "draw"
+                        new_winner_token = "draw"  # Special value for draw
+                        game_over = True
+                    else:
+                        # Switch player token
+                        if player_token_from_msg == db_game.player1_token:
+                            next_player_token = db_game.player2_token
+                        else:  # Assumes player_token_from_msg must be player2_token
+                            next_player_token = db_game.player1_token
+                        new_status = "active"
+
+                    updated_db_game = crud_game.update_game_state(
+                        db=db,
+                        game_id=game_uuid,
+                        board_state=new_board_state_json,
+                        current_player_token=(
+                            next_player_token if not game_over else None
+                        ),
+                        status=new_status,
+                        winner_token=new_winner_token,
+                    )
+
+                    if not updated_db_game:
+                        await manager.send_personal_message(
+                            {
+                                "type": "ERROR",
+                                "payload": {
+                                    "message": "Failed to update game state after move."
+                                },
+                            },
+                            websocket,
+                        )
+                        continue
+
+                    # Broadcast update or game over
+                    final_board_to_broadcast: GameLogicBoard = (
+                        updated_db_game.board_state.get("board", [])
+                    )
+
+                    if game_over:
+                        game_over_payload = {
+                            "game_id": active_game_id,
+                            "board": final_board_to_broadcast,
+                            "status": updated_db_game.status,  # e.g., "player_x_wins", "draw"
+                            "winner_token": updated_db_game.winner_token,  # Token of winner or "draw"
+                            "winning_player_piece": (
+                                player_piece
+                                if updated_db_game.winner_token != "draw"
+                                else None
+                            ),
+                        }
+                        await manager.broadcast_to_game(
+                            {"type": "GAME_OVER", "payload": game_over_payload},
+                            active_game_id,
+                        )
+                        # Optionally, disconnect players or clean up game room after a delay
+                    else:
+                        game_update_payload = {
+                            "game_id": active_game_id,
+                            "board": final_board_to_broadcast,
+                            "current_player_token": updated_db_game.current_player_token,
+                            "last_move": {  # Include details of the last move
+                                "player_token": player_token_from_msg,
+                                "player_piece": player_piece,
+                                "row": placed_coords[0],  # row where piece was placed
+                                "col": placed_coords[1],  # col where piece was placed
+                                "side_played": side,
+                            },
+                        }
+                        await manager.broadcast_to_game(
+                            {"type": "GAME_UPDATE", "payload": game_update_payload},
+                            active_game_id,
+                        )
 
                 else:
                     await manager.send_personal_message(

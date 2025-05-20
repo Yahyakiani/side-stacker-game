@@ -18,7 +18,31 @@ def get_game(db: Session, game_id: uuid.UUID) -> Optional[Game]:
     """
     Retrieves a game by its ID.
     """
-    return db.query(Game).filter(Game.id == game_id).first()
+    game = db.get(Game, game_id)  # .get() is efficient for PK lookups
+    if game:
+        # Expire the instance. The next access to its attributes
+        # will trigger a reload from the database, reflecting changes
+        # committed by other sessions.
+        print(
+            f"DEBUG crud get_game: Found game {game_id} in session {id(db)}. Expiring it."
+        )
+        db.expire(game)
+        # No need to explicitly refresh here; access in calling code will do it.
+        # For example, when game.status is checked in game_ws.py, it will reload.
+    else:
+        print(
+            f"DEBUG crud get_game: Game {game_id} not found by db.get() in session {id(db)}. Will try query."
+        )
+        # If db.get() didn't find it (e.g., not in identity map yet), a query will fetch it.
+        # This path is less likely if the object was previously handled by this session.
+        # This is more of a fallback if db.get() returns None but the object might exist.
+        # game = db.query(Game).filter(Game.id == game_id).first() # Alternative fetch
+        # if game:
+        #     print(f"DEBUG crud get_game: Fetched game {game_id} via query, status: {game.status}")
+
+    # Returning 'game' (which might be None if not found at all, or the expired instance)
+    # Accessing attributes of an expired instance in the caller will trigger a SELECT.
+    return game
 
 
 def create_game_db(
