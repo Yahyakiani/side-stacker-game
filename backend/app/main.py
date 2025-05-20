@@ -1,8 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.core.config import settings # Ensure this import works
+from app.core.config import settings
 from app.api.v1.endpoints import temp_game_http # Import the new router
+from app.api.v1.endpoints import game_ws
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -12,7 +13,7 @@ app = FastAPI(
 # CORS (Cross-Origin Resource Sharing) middleware
 origins = [
     "http://localhost",
-    "http://localhost:5173", # Default Vite frontend port
+    "http://localhost:5173",  # Default frontend port
 ]
 if hasattr(settings, 'CORS_ORIGINS') and settings.CORS_ORIGINS: # If defined in config
     origins.extend([str(origin) for origin in settings.CORS_ORIGINS if str(origin) not in origins])
@@ -45,9 +46,10 @@ app.include_router(
 )
 
 
-# TODO: Later, include routers for WebSockets
-# from app.api.v1.endpoints import game_ws
-# app.include_router(game_ws.router, prefix=f"{settings.API_V1_STR}/ws", tags=["Game WebSocket"])
+# WebSocket game router
+app.include_router(
+    game_ws.router, prefix=f"{settings.API_V1_STR}/ws-game", tags=["Game WebSocket"]
+)
 
 if __name__ == "__main__":
     import uvicorn

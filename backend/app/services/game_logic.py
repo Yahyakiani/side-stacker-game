@@ -1,6 +1,6 @@
 from typing import List, Optional, Tuple
 
-# Constants (already defined)
+
 ROWS: int = 7
 COLS: int = 7
 CONNECT_N: int = 4
@@ -66,8 +66,6 @@ def apply_move(board: Board, row_idx: int, side: str, player: str) -> Optional[T
                 placed_coords = (row_idx, col_idx)
                 break
     return placed_coords
-
-# --- NEW IMPLEMENTATIONS BELOW ---
 
 def check_win(board: Board, player: str, last_move_coords: Optional[Tuple[int, int]] = None) -> bool:
     """
