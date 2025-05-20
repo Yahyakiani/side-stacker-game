@@ -346,13 +346,19 @@ This is a living section and will be updated as we progress.
 *   **NEXT:** Phase 3: Basic Frontend & WebSocket Foundation
 
 ### Phase 3: Basic Frontend & WebSocket Foundation
-*   **Task:** Install and setup Chakra UI in the `frontend/` (JavaScript React) project. Define a basic theme.
-*   **Task:** Implement WebSocket connection manager in FastAPI (`backend/app/api/v1/endpoints/game_ws.py` or a helper class).
-*   **Task:** Define initial WebSocket message handlers in FastAPI for `CREATE_GAME` (PvP mode initially). Game creation should now use the DB.
-*   **Task:** Implement React components: `GameSetup.jsx` (mode selection), basic `Board.jsx` (static display for now), `GameInfo.jsx`.
-*   **Task:** Implement client-side WebSocket logic (`frontend/src/services/socketService.js`) to send `CREATE_GAME` and receive `GAME_CREATED`, `WAITING_FOR_PLAYER`.
-*   **Task:** Connect `GameSetup.jsx` to create a game via WebSocket. Display `game_id` and player token received. Ensure frontend code is formatted with Prettier.
-*   **DONE:** [ ]
+*   **Task:** Setup Chakra UI in the React **JavaScript** project.
+*   **Task:** Implement basic WebSocket connection manager in FastAPI (`websockets/connection_manager.py`).
+*   **Task:** Define initial WebSocket message handlers in FastAPI for `CREATE_GAME`.
+*   **Task:** Create React components: `GameSetup.jsx` (mode selection), basic `Board.jsx` (static display for now), `GameInfo.jsx`.
+*   **Task:** Implement client-side WebSocket logic in React (`services/socketService.js`) to send `CREATE_GAME` and receive `GAME_CREATED`.
+*   **Task:** Frontend should allow user to initiate a game, get a game ID back from the server (persisted in DB).
+*   **DONE:**
+    *   [x] Setup Chakra UI in the React project.
+    *   [x] Implemented `ConnectionManager` in FastAPI.
+    *   [x] Defined WebSocket endpoint in FastAPI and handler for `CREATE_GAME` message.
+    *   [x] Created initial React components: `GamePage`, `GameSetup`, placeholder `Board`.
+    *   [x] Implemented `socketService.js` for client-side WebSocket communication.
+    *   [x] Connected `GameSetup` and `GamePage` to create a game via WebSocket and display game details.
 *   **NEXT:** Phase 4
 
 ### Phase 4: Full PvP Gameplay via WebSockets
