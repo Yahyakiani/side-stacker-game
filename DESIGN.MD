@@ -384,14 +384,18 @@ Phase 4: Full PvP Gameplay via WebSockets
 *   **NEXT:** Refine frontend UI for `GameInfo` (clear turn/winner display), `Board` (better cell interaction/feedback), and ensure robust "game over" screen. Then, Phase 5: Player vs AI (Easy Bot).
 
 ### Phase 5: Player vs AI (Easy Bot)
-*   **Task:** Implement `EasyAIBot` logic in `backend/app/services/ai/easy_bot.py`.
-*   **Task:** Integrate Easy AI into backend WebSocket flow:
-    *   When a PvE (Easy) game is created, the backend notes this.
-    *   After player's move, if it's AI's turn, backend invokes `EasyAIBot.get_move()`.
-    *   Backend validates and applies AI's move, updates DB, broadcasts `GAME_UPDATE`.
-*   **Task:** Update `frontend/src/components/GameSetup.jsx` to allow selection of "Player vs AI (Easy)" mode.
-*   **DONE:** [ ]
-*   **NEXT:** Phase 6
+*   **Task:** Implement Easy AI logic in `backend/app/services/ai/easy_bot.py`.
+*   **Task:** Integrate Easy AI into backend:
+    *   When a PvE (Easy) game is created, associate it with the Easy AI.
+    *   After player's move, if it's AI's turn, invoke AI to get a move.
+    *   Apply AI's move and broadcast `GAME_UPDATE`.
+*   **Task:** Update `frontend/src/components/GameSetup.tsx` to allow selection of PvE Easy mode.
+*   **DONE:**
+    *   [x] Implemented `EasyAIBot` logic.
+    *   [x] Backend `CREATE_GAME` handler now supports PvE mode and sets up AI player.
+    *   [x] Backend `MAKE_MOVE` handler now triggers Easy AI's turn in PvE games, processes its move, updates DB, and broadcasts updates.
+    *   [x] Frontend `GameSetup.jsx` updated to allow selecting "Player vs AI (Easy)" mode, which is then communicated to the backend.
+    *   [x] Verified end-to-end Player vs Easy AI gameplay.
 
 ### Phase 6: Player vs AI (Medium Bot)
 *   **Task:** Implement `MediumAIBot` logic (Minimax) in `backend/app/services/ai/medium_bot.py`.

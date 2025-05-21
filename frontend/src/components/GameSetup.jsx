@@ -1,28 +1,38 @@
 // frontend/src/components/GameSetup.jsx
 import React, { useState } from 'react'
-import { Box, Button, VStack, Heading, RadioGroup, Radio, Stack } from '@chakra-ui/react'
+import { Box, Button, VStack, Heading, RadioGroup, Radio, Stack, Select, Text } from '@chakra-ui/react'
 import { createGame } from '../services/socketService' // Import the function
 
 const GameSetup = ({ setIsLoading, setError }) => { // onGameCreated is no longer passed directly
     const [gameMode, setGameMode] = useState('PVP')
-    // const [aiDifficulty, setAiDifficulty] = useState('EASY')
+    const [aiDifficulty, setAiDifficulty] = useState('EASY')
 
     const handleCreateGame = async () => {
-        setError(null) // Clear previous errors
+        setError(null)
         setIsLoading(true)
-        console.log(`Attempting to create game via WebSocket: Mode=${gameMode}`)
+
+        let modeForSocket = gameMode
+        let difficultyForSocket = null
+
+        if (gameMode === 'PVE') {
+            modeForSocket = 'PVE'
+            difficultyForSocket = aiDifficulty
+        }
+
+        console.log(
+            `Attempting to create game via WebSocket: Mode=${modeForSocket}, ` +
+            `Difficulty=${difficultyForSocket || 'N/A'}`
+        )
 
         try {
-            // The socketService.onmessage (and specifically onGameCreatedCallback in GamePage)
-            // will handle the response from the server.
-            createGame(gameMode /*, aiDifficulty */)
-            // setIsLoading(false) will be handled in GamePage when game_created is received or on error
+            createGame(modeForSocket, difficultyForSocket)
         } catch (e) {
             console.error("Error initiating game creation:", e)
             setError("Failed to send game creation request.")
             setIsLoading(false)
         }
     }
+
 
     return (
         <Box p={5} shadow="md" borderWidth="1px" borderRadius="md" maxW="400px" mx="auto" mt="10vh">
@@ -32,11 +42,22 @@ const GameSetup = ({ setIsLoading, setError }) => { // onGameCreated is no longe
                 </Heading>
 
                 <RadioGroup onChange={setGameMode} value={gameMode}>
-                    <Stack direction="row" spacing={5}>
+                    <Stack direction="column" spacing={3}>
                         <Radio value="PVP">Player vs Player</Radio>
-                        <Radio value="PVE_TEMP" isDisabled>Player vs AI (Coming Soon)</Radio>
+                        <Radio value="PVE">Player vs AI</Radio>
                     </Stack>
                 </RadioGroup>
+                {gameMode === 'PVE' && (
+                    <VStack spacing={3} align="stretch" w="100%">
+                        <Text fontSize="sm" color="gray.600">Select AI Difficulty:</Text>
+                        <Select value={aiDifficulty} onChange={e => setAiDifficulty(e.target.value)}>
+                            <option value="EASY">Easy</option>
+                            <option value="MEDIUM" disabled>Medium (Coming Soon)</option>
+                            <option value="HARD" disabled>Hard (Coming Soon)</option>
+                        </Select>
+                    </VStack>
+                )}
+
 
                 <Button
                     colorScheme="teal"
