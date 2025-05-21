@@ -1,10 +1,10 @@
 // frontend/src/pages/GamePage.jsx
 import React, { useState, useEffect, useCallback } from 'react'
-import { Box, VStack, Heading, Text, Spinner, useToast, Button } from '@chakra-ui/react' // Added useToast
+import { Box, VStack, Heading, Text, Spinner, useToast, Button, Container } from '@chakra-ui/react'
 import GameSetup from '../components/GameSetup'
 import Board from '../components/board/Board' // Uncomment
 import Controls from '../components/Controls'   // Import Controls
-// import GameInfo from '../components/GameInfo' // Will add later
+import GameInfo from '../components/GameInfo' // Will add later 
 import { connectWebSocket, sendMessage, getSocket, makeMove as sendMakeMoveWebSocket } from '../services/socketService'
 
 const GamePage = () => {
@@ -26,7 +26,7 @@ const GamePage = () => {
     const [socketConnected, setSocketConnected] = useState(false)
     const toast = useToast() // For notifications
 
-    const resetGameState = () => {
+    const resetGameState = useCallback(() => {
         setGameData(null)
         setGameState({
             board: Array(7).fill(Array(7).fill(null)),
@@ -37,8 +37,9 @@ const GamePage = () => {
             last_move: null
         })
         setError(null)
-        // socketService will handle its own state, but we might need to re-initiate connect if fully disconnected
-    }
+        setIsLoading(false) // Ensure loading is also reset
+    }, [])
+
 
     const handleGameCreatedOrJoined = useCallback((payload, type) => {
         console.log(`GamePage: ${type} success:`, payload)
@@ -90,16 +91,30 @@ const GamePage = () => {
 
     const handleGameUpdate = useCallback((payload) => {
         console.log("GamePage: GAME_UPDATE received", payload)
-        setGameState(prevState => ({
-            ...prevState,
-            board: payload.board,
-            current_player_token: payload.current_player_token,
-            last_move: payload.last_move,
-            status: 'active' // Ensure status is active
-        }))
-        const nextPlayerPiece = gameState.players_map[payload.current_player_token]
-        toast({ title: "Move made. It's " + (nextPlayerPiece || 'Unknown') + "'s turn.", status: "info", duration: 2000, isClosable: true });
-    }, [toast, gameState.players_map]) // Added gameState.players_map to dependency
+
+        setGameState(prevState => {
+            const updatedState = {
+                ...prevState,
+                board: payload.board,
+                current_player_token: payload.current_player_token,
+                last_move: payload.last_move,
+                status: 'active'
+            }
+
+            const nextToken = payload.current_player_token
+            const nextPiece = prevState.players_map[nextToken]
+            if (nextToken) {
+                toast({
+                    title: "Move made. It's " + (nextPiece || 'Unknown') + "'s turn.",
+                    status: "info",
+                    duration: 2000,
+                    isClosable: true
+                })
+            }
+
+            return updatedState
+        })
+    }, [toast])
 
     const handleGameOver = useCallback((payload) => {
         console.log("GamePage: GAME_OVER received", payload)
@@ -146,7 +161,7 @@ const GamePage = () => {
             default:
                 console.warn("GamePage: Unhandled WebSocket message type:", message.type)
         }
-    }, [handleGameStart, handleGameUpdate, handleGameOver, toast, handleWebSocketError]) // Removed handleGameCreatedOrJoined
+    }, [handleGameStart, handleGameUpdate, handleGameOver, toast, handleWebSocketError])
 
 
 
@@ -195,66 +210,108 @@ const GamePage = () => {
     }
 
     // Determine current player's piece for display
-    const currentPlayerPiece = gameData ? gameData.player_piece : '?'
+    const currentPlayerPieceForControls = gameData ? gameData.player_piece : '?'
     const isMyTurn = gameData && gameState.current_player_token === gameData.player_token
     const controlsDisabled = !isMyTurn || gameState.status !== 'active' || isLoading
 
-    if (!socketConnected && !error) { /* ... (same as before) ... */ }
-    if (error && !gameData) { /* ... (same as before) ... */ }
-
-    if (!gameData || gameState.status === 'setup' || gameState.status === 'waiting') {
+    if (!socketConnected && !error) {
         return (
-            <GameSetup 
-                setIsLoading={setIsLoading}
-                setError={setError}
-            />
+            <Container centerContent py={{ base: "20vh", md: "30vh" }}>
+                <VStack spacing={4}>
+                    <Spinner
+                        thickness="4px"
+                        speed="0.65s"
+                        emptyColor="gray.200"
+                        color="teal.500"
+                        size="xl"
+                    />
+                    <Text fontSize="lg" color="gray.600">Connecting to server...</Text>
+                </VStack>
+            </Container>
+        )
+    }
+    if (error && (!gameData || !socketConnected)) {
+        return (
+            <Container centerContent py={{ base: "20vh", md: "30vh" }}>
+                <VStack spacing={4} p={6} borderWidth="1px" borderRadius="lg" shadow="md" bg="white">
+                    <Heading color="red.500" size="lg">Connection Error</Heading>
+                    <Text color="gray.700" textAlign="center">{error}</Text>
+                    <Text mt={2} fontSize="sm" color="gray.500">
+                        Please ensure the backend server is running and try refreshing the page.
+                    </Text>
+                    <Button colorScheme="teal" onClick={() => window.location.reload()} mt={4}>
+                        Refresh Page
+                    </Button>
+                </VStack>
+            </Container>
         )
     }
 
-    return (
-        <VStack spacing={4} align="stretch" p={5} maxW="800px" mx="auto">
-            <Heading as="h1" size="lg" textAlign="center">
-                Side-Stacker Game
-            </Heading>
-            <Text fontWeight="bold">Status: WebSocket {socketConnected ? 'Connected' : 'Disconnected'}</Text>
-
-            <Box p={3} borderWidth="1px" borderRadius="md" bg="blue.50">
-                <Heading size="md">Game Info</Heading>
-                <Text>Game ID: {gameData.game_id}</Text>
-                <Text>You are Player: {gameData.player_piece} (Token: {gameData.player_token})</Text>
-                {gameState.status === 'active' && gameState.current_player_token && (
-                    <Text fontWeight="bold" color={isMyTurn ? "green.500" : "orange.500"}>
-                        Turn: Player {gameState.players_map[gameState.current_player_token] || 'Unknown'}
-                        {isMyTurn ? " (Your Turn)" : ""}
-                    </Text>
-                )}
-                {gameState.status.includes("wins") && (
-                    <Text fontWeight="bold" color="purple.500">
-                        Winner: Player {gameState.players_map[gameState.winner_token] || gameState.winner_token}
-                    </Text>
-                )}
-                {gameState.status === "draw" && <Text fontWeight="bold" color="gray.500">Game is a Draw!</Text>}
-            </Box>
-
-            <Board boardData={gameState.board} />
-
-            {gameState.status === 'active' && (
-                <Controls
-                    onMakeMove={handleMakeMove}
-                    isDisabled={controlsDisabled}
-                    currentPlayerPiece={currentPlayerPiece}
+    if (!gameData || gameState.status === 'setup' || gameState.status === 'waiting') {
+        return (
+            <Container centerContent py={10}>
+                <GameSetup
+                    setIsLoading={setIsLoading}
+                    setError={setError}
                 />
-            )}
+                {error && <Text color="red.500" mt={4}>Error: {error}</Text>}
+            </Container>
+        )
+    }
 
-            {isLoading && <Spinner label="Processing..." />}
-            {error && <Text color="red.500" mt={2}>Error: {error}</Text>}
 
-            {/* Button to reset game state for testing */}
-            {(gameState.status === 'over' || gameState.status.includes('wins') || gameState.status === 'draw') &&
-                <Button onClick={resetGameState} colorScheme="pink" mt={4}>Play Again (New Game)</Button>
-            }
-        </VStack>
+    return (
+        <Container maxW="container.md" py={6}>
+            <VStack spacing={6} align="stretch">
+                <Heading as="h1" size="xl" textAlign="center" color="teal.600" mb={2}>
+                    Side-Stacker
+                </Heading>
+
+                <GameInfo gameData={gameData} gameState={gameState} />
+
+                <Board boardData={gameState.board} />
+
+                {gameState.status === 'active' && (
+                    <Controls
+                        onMakeMove={handleMakeMove}
+                        isDisabled={controlsDisabled}
+                        currentPlayerPiece={currentPlayerPieceForControls}
+                    />
+                )}
+
+                {isLoading &&
+                    <Spinner
+                        label="Processing..."
+                        thickness="4px"
+                        speed="0.65s"
+                        emptyColor="gray.200"
+                        color="blue.500"
+                        size="xl"
+                    />
+                }
+                {error && !isLoading &&
+                    <Text color="red.500" mt={2} textAlign="center">
+                        Error: {error}
+                    </Text>
+                }
+
+                {(gameState.status !== 'active' &&
+                    gameState.status !== 'setup' &&
+                    gameState.status !== 'waiting') && (
+                        <Button
+                            onClick={resetGameState}
+                            colorScheme="pink"
+                            size="lg"
+                            mt={4}
+                            isFullWidth
+                        >
+                            Play Again (New Game)
+                        </Button>
+                    )}
+            </VStack>
+        </Container>
     )
+
 }
 
 export default GamePage
