@@ -410,15 +410,12 @@ Phase 4: Full PvP Gameplay via WebSockets
 ### Phase 7: Polish & Optional Features
 *   **Task:** Thoroughly test all required game modes (PvP, PvE Easy, PvE Medium) and win/loss/draw conditions.
 *   **Task:** Refine UI/UX: clear visual cues for playable moves, last move indication, smooth transitions, error handling.
-*   **Task:** Code cleanup, add comments, ensure `README.md` is comprehensive for setup and running.
-*   **Task:** (Optional Stretch Goal) Implement AI vs AI mode:
-    *   Backend orchestration for AvA games via WebSockets.
-    *   Frontend UI to select AI opponents and spectate/trigger game.
-*   **Task:** (Optional Stretch Goal) Implement a "Hard" AI using classical methods (`HardAIBot`).
-*   **Task:** (Optional Exploration) If time/interest, experiment with LLM-based AI for AvA or Hard mode.
-*   **Task:** Add basic frontend unit/component tests (React Testing Library / Jest).
-*   **DONE:** [ ]
-*   **NEXT:** Project Completion
+*   **Task:** Implement AI vs AI mode.
+*   **DONE:**
+    *   [x] (From previous phases) PvP, PvE Easy, PvE Medium, PvE Hard implemented and tested.
+    *   [x] Implemented AI vs AI mode (backend orchestration and frontend spectating UI).
+    *   [x] Resolved various frontend bugs (toast messages, game over display, clientId error).
+*   **NEXT:** Make Easy AI "dumber". Then, general UI/UX refinement and code cleanup.
 
 ## 10. Future Considerations (Beyond Initial Scope)
 
