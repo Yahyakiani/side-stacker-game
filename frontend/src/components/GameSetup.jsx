@@ -5,35 +5,36 @@ import { createGame } from '../services/socketService' // Import the function
 
 const GameSetup = ({ setIsLoading, setError }) => { // onGameCreated is no longer passed directly
     const [gameMode, setGameMode] = useState('PVP')              // PVP, PVE, AVA
-    const [pveAiDifficulty, setPveAiDifficulty] = useState('EASY')
+    const [selectedAiDifficulty, setSelectedAiDifficulty] = useState('EASY')
     const [ai1Difficulty, setAi1Difficulty] = useState('EASY')
     const [ai2Difficulty, setAi2Difficulty] = useState('EASY')
 
 
     const handleCreateGame = async () => {
-        setError(null)
-        setIsLoading(true)
+        setError(null);
+        setIsLoading(true);
 
-        let modeForSocket = gameMode
-        let payloadDetails = {}
+        let optionsForSocket = {}; // This will be the second argument to createGame
 
         if (gameMode === 'PVE') {
-            payloadDetails.difficulty = pveAiDifficulty
+            optionsForSocket = selectedAiDifficulty; // Pass the difficulty string directly
         } else if (gameMode === 'AVA') {
-            payloadDetails.ai1_difficulty = ai1Difficulty
-            payloadDetails.ai2_difficulty = ai2Difficulty
+            optionsForSocket = {
+                ai1_difficulty: ai1Difficulty,
+                ai2_difficulty: ai2Difficulty
+            };
         }
+        // For PVP, optionsForSocket remains {}
 
-        console.log(`Attempting to create game: Mode=${modeForSocket}, Details=${JSON.stringify(payloadDetails)}`)
+        console.log(`Attempting to create game via WebSocket: Mode=${gameMode}, Options=${JSON.stringify(optionsForSocket)}`);
 
         try {
-            createGame(modeForSocket, payloadDetails)
+            createGame(gameMode, optionsForSocket);
         } catch (e) {
-            console.error("Error initiating game creation:", e)
-            setError("Failed to send game creation request.")
-            setIsLoading(false)
+            console.error("Error initiating game creation:", e);
+            setError("Failed to send game creation request.");
+            setIsLoading(false);
         }
-
     }
 
 
@@ -69,6 +70,19 @@ const GameSetup = ({ setIsLoading, setError }) => { // onGameCreated is no longe
                                 <option value="HARD">Hard</option>
                             </Select>
                         </VStack>
+                    </VStack>
+                )}
+                {gameMode === 'PVE' && (
+                    <VStack spacing={3} align="stretch" w="100%">
+                        <Text fontSize="sm" color="gray.600">Select AI Difficulty:</Text>
+                        <Select
+                            value={selectedAiDifficulty} // This was aiDifficulty before, ensure state name matches
+                            onChange={(e) => setSelectedAiDifficulty(e.target.value)} // Ensure state name matches
+                        >
+                            <option value="EASY">Easy</option>
+                            <option value="MEDIUM">Medium</option>
+                            <option value="HARD">Hard</option>
+                        </Select>
                     </VStack>
                 )}
 

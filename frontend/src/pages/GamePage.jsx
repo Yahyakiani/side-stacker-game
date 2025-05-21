@@ -42,25 +42,21 @@ const GamePage = () => {
     }, [])
 
 
-    const handleGameCreatedOrJoined = useCallback((payload, type) => {
-        console.log(`GamePage: ${type} success:`, payload)
-        const currentClientId = getClientId();
+    const handleGameCreatedOrJoined = useCallback((payload, typeFromCallback) => {
+        console.log(`GamePage: Game created/joined (via specific cb):`, payload);
+        const currentClientIdVal = getClientId();
         setGameData({
             game_id: payload.game_id,
-            player_token: payload.player_token === "SPECTATOR" ? currentClientId : payload.player_token,
+            player_token: payload.player_token === "SPECTATOR" ? currentClientIdVal : payload.player_token,
             player_piece: payload.player_piece,
             game_mode: payload.game_mode
-        })
-        if (type === "GAME_CREATED" && payload.message) {
-            toast({ title: payload.message, status: "info", duration: 3000, isClosable: true })
+        });
+        if (payload.message) {
+            toast({ title: payload.message, status: (payload.game_mode && payload.game_mode.startsWith("PVP") && payload.player_piece === "X") ? "info" : "success", duration: 3000, isClosable: true });
         }
-        if (type === "GAME_JOINED" && payload.message) {
-            toast({ title: payload.message, status: "success", duration: 3000, isClosable: true })
-        }
-        // GAME_START will set the initial board and current player
-        setIsLoading(false)
-        setError(null)
-    }, [toast])
+        setIsLoading(false);
+        setError(null);
+    }, [toast]);
 
     const handleGameStart = useCallback((payload) => {
         console.log("GamePage: GAME_START received", payload)
@@ -153,11 +149,9 @@ const GamePage = () => {
         console.log("GamePage: Attempting to connect WebSocket...")
         connectWebSocket(
             handleWebSocketMessage, 
-            (payload) => handleGameCreatedOrJoined(payload, "GAME_CREATED"), // Pass type for GAME_CREATED
+            (payload) => handleGameCreatedOrJoined(payload, "GAME_CREATED_OR_JOINED"), // Simplified callback
             handleWebSocketError
-            // For GAME_JOINED, we'd need another way if a user joins via UI later.
-            // For now, CREATE_GAME is the main entry point.
-        )
+        );
 
         const intervalId = setInterval(() => {
             const sock = getSocket()
@@ -243,7 +237,26 @@ const GamePage = () => {
         )
     }
 
+    console.log("--- Debugging Controls Condition ---");
+    console.log("gameData:", gameData);
+    console.log("gameState.status:", gameState.status);
 
+    const cond1 = gameState.status === 'active';
+    const cond2 = !!gameData; // Convert gameData object to boolean
+    const cond3 = !!(gameData && gameData.game_mode); // Check if game_mode exists and is truthy
+    let cond4 = false;
+    if (gameData && gameData.game_mode) {
+        cond4 = !gameData.game_mode.startsWith('AVA');
+    }
+
+    console.log("cond1 (status === 'active'):", cond1);
+    console.log("cond2 (!!gameData):", cond2);
+    console.log("cond3 (!!(gameData && gameData.game_mode)):", cond3);
+    console.log("cond4 (!gameData.game_mode.startsWith('AVA')):", cond4);
+
+    const overallCondition = cond1 && cond2 && cond3 && cond4;
+    console.log("Overall Condition for Controls:", overallCondition);
+    console.log("------------------------------------");
     return (
         <Container maxW="container.md" py={6}>
             <VStack spacing={6} align="stretch">
