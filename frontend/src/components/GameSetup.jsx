@@ -52,7 +52,7 @@ const GameSetup = ({ setIsLoading, setError }) => { // onGameCreated is no longe
                         <Text fontSize="sm" color="gray.600">Select AI Difficulty:</Text>
                         <Select value={aiDifficulty} onChange={e => setAiDifficulty(e.target.value)}>
                             <option value="EASY">Easy</option>
-                            <option value="MEDIUM" disabled>Medium (Coming Soon)</option>
+                            <option value="MEDIUM">Medium</option>
                             <option value="HARD" disabled>Hard (Coming Soon)</option>
                         </Select>
                     </VStack>

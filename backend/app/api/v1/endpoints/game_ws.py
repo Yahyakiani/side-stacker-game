@@ -18,6 +18,7 @@ from app.services.game_logic import (
     check_draw,
 )  # For type hinting and constants
 from app.services.ai.easy_bot import EasyAIBot
+from app.services.ai.medium_bot import MediumAIBot
 from app.services.game_logic import create_board as service_create_board
 
 router = APIRouter()
@@ -114,8 +115,9 @@ async def websocket_endpoint(
                     initial_status = "waiting_for_player2"  # Default for PVP
 
                     if db_game_mode.startswith("PVE"):
+                        difficulty_part = db_game_mode.split("_")[1]
                         player2_token_for_game = (
-                            f"AI_{ai_difficulty}_PLAYER"  # Special token for AI
+                            f"AI_{difficulty_part}_PLAYER"  # Special token for AI
                         )
                         initial_status = "active"  # PvE games start immediately
 
@@ -148,7 +150,10 @@ async def websocket_endpoint(
                     ):  # Check actual game mode from DB
                         game_created_message += " Waiting for Player 2..."
                     elif db_game.game_mode.startswith("PVE"):
-                        game_created_message += f" Playing against {ai_difficulty} AI."
+                        actual_ai_difficulty = db_game.game_mode.split("_")[1]
+                        game_created_message += (
+                            f" Playing against {actual_ai_difficulty } AI."
+                        )
 
                     response_payload = {
                         "game_id": active_game_id,
@@ -642,6 +647,10 @@ async def websocket_endpoint(
                         ai_bot_instance = None
                         if "EASY" in db_game.game_mode:
                             ai_bot_instance = EasyAIBot(player_piece=ai_player_piece)
+                        elif "MEDIUM" in db_game.game_mode.upper():
+                            ai_bot_instance = MediumAIBot(
+                                player_piece=ai_player_piece, search_depth=2
+                            )
 
                         if ai_bot_instance:
                             print(
