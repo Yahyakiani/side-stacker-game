@@ -398,11 +398,14 @@ Phase 4: Full PvP Gameplay via WebSockets
     *   [x] Verified end-to-end Player vs Easy AI gameplay.
 
 ### Phase 6: Player vs AI (Medium Bot)
-*   **Task:** Implement `MediumAIBot` logic (Minimax) in `backend/app/services/ai/medium_bot.py`.
-*   **Task:** Integrate Medium AI into backend WebSocket flow similar to Easy AI.
-*   **Task:** Update `frontend/src/components/GameSetup.jsx` to allow selection of "Player vs AI (Medium)" mode.
-*   **DONE:** [ ]
-*   **NEXT:** Phase 7
+*   **Task:** Implement Medium AI logic (Minimax) in `ai/medium_bot.py`.
+*   **Task:** Integrate Medium AI into backend.
+*   **Task:** Update `GameSetup.tsx` to allow selection of PvE Medium mode.
+*   **DONE:**
+    *   [x] Implemented `MediumAIBot` logic using Minimax with Alpha-Beta pruning and a heuristic evaluation function.
+    *   [x] Backend `CREATE_GAME` and `MAKE_MOVE` handlers updated to support and utilize `MediumAIBot` for "PVE_MEDIUM" games.
+    *   [x] Frontend `GameSetup.jsx` updated to allow selection of "Medium" AI difficulty.
+    *   [x] Verified end-to-end Player vs Medium AI gameplay
 
 ### Phase 7: Polish & Optional Features
 *   **Task:** Thoroughly test all required game modes (PvP, PvE Easy, PvE Medium) and win/loss/draw conditions.
