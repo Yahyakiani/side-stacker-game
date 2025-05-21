@@ -91,30 +91,11 @@ const GamePage = () => {
 
     const handleGameUpdate = useCallback((payload) => {
         console.log("GamePage: GAME_UPDATE received", payload)
-
-        setGameState(prevState => {
-            const updatedState = {
-                ...prevState,
-                board: payload.board,
-                current_player_token: payload.current_player_token,
-                last_move: payload.last_move,
-                status: 'active'
-            }
-
-            const nextToken = payload.current_player_token
-            const nextPiece = prevState.players_map[nextToken]
-            if (nextToken) {
-                toast({
-                    title: "Move made. It's " + (nextPiece || 'Unknown') + "'s turn.",
-                    status: "info",
-                    duration: 2000,
-                    isClosable: true
-                })
-            }
-
-            return updatedState
-        })
-    }, [toast])
+        setGameState(prevState => ({ // No toast for regular turn updates
+            ...prevState, board: payload.board, current_player_token: payload.current_player_token,
+            last_move: payload.last_move, status: 'active'
+        }));
+    }, [])
 
     const handleGameOver = useCallback((payload) => {
         console.log("GamePage: GAME_OVER received", payload)
@@ -161,7 +142,7 @@ const GamePage = () => {
             default:
                 console.warn("GamePage: Unhandled WebSocket message type:", message.type)
         }
-    }, [handleGameStart, handleGameUpdate, handleGameOver, toast, handleWebSocketError])
+    }, [handleGameStart, handleGameUpdate, handleGameOver, handleWebSocketError])
 
 
 
