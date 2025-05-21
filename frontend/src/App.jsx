@@ -1,18 +1,16 @@
-import { Box, Heading, Button } from '@chakra-ui/react'
-import './App.css'
+import { Box, useColorModeValue } from '@chakra-ui/react'
 import GamePage from './pages/GamePage'
+import './App.css'
 
 function App() {
 
+  const bgColor = useColorModeValue('gray.50', 'gray.800') // Light for light, dark for dark
+  const textColor = useColorModeValue('gray.800', 'whiteAlpha.900')
+
   return (
     <>
-      <Box textAlign="center" p={5}>
-        <Heading as="h1" size="xl" mb={6}>
-          Side-Stacker Game
-        </Heading>
-        <Box minH="100vh" bg="gray.50"> {/* Basic page background */}
-          <GamePage />
-        </Box>
+      <Box minH="100vh" bg={bgColor} color={textColor}>
+        <GamePage />
       </Box>
     </>
   )
