@@ -3,6 +3,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPExce
 from sqlalchemy.orm import Session
 import json  # For parsing incoming messages and constructing outgoing ones
 import uuid
+import asyncio
 
 from app.websockets.connection_manager import manager  # Our connection manager
 from app.db.session import get_db
@@ -19,6 +20,8 @@ from app.services.game_logic import (
 )  # For type hinting and constants
 from app.services.ai.easy_bot import EasyAIBot
 from app.services.ai.medium_bot import MediumAIBot
+from app.services.ai.hard_bot import HardAIBot
+
 from app.services.game_logic import create_board as service_create_board
 
 router = APIRouter()
@@ -92,14 +95,9 @@ async def websocket_endpoint(
 
                     # Validate general game mode
                     # Allowing PVP, PVE_EASY, PVE_MEDIUM, PVE_HARD (Medium/Hard are future)
-                    allowed_game_modes = ["PVP"]
-                    for diff in ["EASY", "MEDIUM", "HARD"]:  # Future difficulties
-                        allowed_game_modes.append(f"PVE_{diff}")
+                    allowed_game_modes = ["PVP", "PVE_EASY", "PVE_MEDIUM", "PVE_HARD"]
 
-                    if (
-                        db_game_mode not in allowed_game_modes
-                        and game_mode_from_payload != "PVE_TEMP"
-                    ):  # Remove PVE_TEMP later
+                    if db_game_mode not in allowed_game_modes:
                         await manager.send_personal_message(
                             {
                                 "type": "ERROR",
@@ -574,7 +572,7 @@ async def websocket_endpoint(
                     human_move_board_json = {"board": current_board_list}
                     human_move_status = "active"
                     human_move_winner = None
-                    human_move_next_player = None
+                    human_move_next_player_token = None
                     human_game_over = False
 
                     if check_win(current_board_list, player_piece, placed_coords):
@@ -586,7 +584,7 @@ async def websocket_endpoint(
                         human_move_winner = "draw"
                         human_game_over = True
                     else:
-                        human_move_next_player = (
+                        human_move_next_player_token = (
                             db_game.player2_token
                             if player_token_from_msg == db_game.player1_token
                             else db_game.player1_token
@@ -597,7 +595,9 @@ async def websocket_endpoint(
                         game_id=game_uuid,
                         board_state=human_move_board_json,
                         current_player_token=(
-                            human_move_next_player if not human_game_over else None
+                            human_move_next_player_token
+                            if not human_game_over
+                            else None
                         ),
                         status=human_move_status,
                         winner_token=human_move_winner,
@@ -628,6 +628,26 @@ async def websocket_endpoint(
                             active_game_id,
                         )
                         continue  # Game ended with human move
+                    else:
+                        game_update_payload_after_human = {
+                            "game_id": active_game_id,
+                            "board": db_game.board_state.get("board", []),
+                            "current_player_token": db_game.current_player_token,
+                            "last_move": {
+                                "player_token": player_token_from_msg,
+                                "player_piece": player_piece,
+                                "row": placed_coords[0],
+                                "col": placed_coords[1],
+                                "side_played": side,
+                            },
+                        }
+                        await manager.broadcast_to_game(
+                            {
+                                "type": "GAME_UPDATE",
+                                "payload": game_update_payload_after_human,
+                            },
+                            active_game_id,
+                        )
 
                     # If not game over, and it's PvE, and AI's turn:
                     is_ai_turn = (
@@ -645,12 +665,20 @@ async def websocket_endpoint(
                         )
 
                         ai_bot_instance = None
-                        if "EASY" in db_game.game_mode:
+                        game_mode_upper = db_game.game_mode.upper()
+                        if "EASY" in game_mode_upper:
                             ai_bot_instance = EasyAIBot(player_piece=ai_player_piece)
-                        elif "MEDIUM" in db_game.game_mode.upper():
+                            await asyncio.sleep(1)
+                        elif "MEDIUM" in game_mode_upper:
                             ai_bot_instance = MediumAIBot(
                                 player_piece=ai_player_piece, search_depth=2
                             )
+                            await asyncio.sleep(1)
+                        elif "HARD" in game_mode_upper:
+                            ai_bot_instance = HardAIBot(
+                                player_piece=ai_player_piece, search_depth=4
+                            )
+                            await asyncio.sleep(0.5)
 
                         if ai_bot_instance:
                             print(
