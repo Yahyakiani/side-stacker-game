@@ -8,7 +8,7 @@ import asyncio
 from app.websockets.connection_manager import manager  # Our connection manager
 from app.db.session import get_db
 from app.crud import crud_game
-from app.schemas.game import GameStateResponse  # Re-use for sending game state
+from app.db.session import SessionLocal
 from app.services.game_logic import (
     PLAYER_X,
     PLAYER_O,
@@ -17,6 +17,7 @@ from app.services.game_logic import (
     apply_move,
     check_win,
     check_draw,
+    EMPTY_CELL,
 )  # For type hinting and constants
 from app.services.ai.easy_bot import EasyAIBot
 from app.services.ai.medium_bot import MediumAIBot
@@ -25,6 +26,204 @@ from app.services.ai.hard_bot import HardAIBot
 from app.services.game_logic import create_board as service_create_board
 
 router = APIRouter()
+
+
+async def run_ai_vs_ai_game(game_id_uuid: uuid.UUID, initial_db_session: Session):
+    """
+    Manages an AI vs AI game, making moves for each AI until the game ends.
+    Uses a new DB session for its operations to avoid issues with the WebSocket's session.
+    """
+    db: Session = SessionLocal()  # Create a fresh session for this long-running task
+    try:
+        active_game_id_str = str(game_id_uuid)
+        print(f"AI vs AI Game Loop Started for: {active_game_id_str}")
+
+        while True:
+            await asyncio.sleep(
+                1.0
+            )  # Delay between AI moves for spectating, adjust as needed
+
+            current_game_state = crud_game.get_game(db, game_id=game_id_uuid)
+            if (
+                not current_game_state
+                or current_game_state.status != "active"
+                or not current_game_state.current_player_token.startswith("AI_")
+            ):
+                print(
+                    f"AvA Game {active_game_id_str}: Loop ending. Status: {current_game_state.status if current_game_state else 'Not Found'}"
+                )
+                break  # Game ended or invalid state
+
+            ai_player_token = current_game_state.current_player_token
+            ai_player_piece = (
+                PLAYER_X
+                if current_game_state.player1_token == ai_player_token
+                else PLAYER_O
+            )
+
+            ai_bot_instance = None
+            # Determine bot from current_player_token (e.g., "AI_EASY_PLAYER_1", "AI_MEDIUM_PLAYER_2")
+            difficulty_and_player_num = (
+                ai_player_token.replace("AI_", "")
+                .replace("_PLAYER_1", "")
+                .replace("_PLAYER_2", "")
+            )
+
+            if "EASY" in difficulty_and_player_num:
+                ai_bot_instance = EasyAIBot(player_piece=ai_player_piece)
+            elif "MEDIUM" in difficulty_and_player_num:
+                ai_bot_instance = MediumAIBot(
+                    player_piece=ai_player_piece, search_depth=2
+                )
+            elif "HARD" in difficulty_and_player_num:
+                ai_bot_instance = HardAIBot(
+                    player_piece=ai_player_piece, search_depth=3
+                )
+
+            if not ai_bot_instance:
+                print(
+                    f"ERROR AvA: Could not instantiate AI bot for token {ai_player_token} in game {active_game_id_str}"
+                )
+                break
+
+            print(
+                f"AvA Game {active_game_id_str}: AI Turn for {ai_player_token} ({ai_player_piece}) thinking..."
+            )
+            current_board_list: GameLogicBoard = current_game_state.board_state.get(
+                "board", service_create_board()
+            )
+
+            ai_move_tuple = ai_bot_instance.get_move(current_board_list)
+
+            if not ai_move_tuple:
+                print(
+                    f"AvA ERROR: AI {ai_player_token} could not find a move. Board full or error."
+                )
+                # Potentially declare draw or forfeit
+                # For now, mark as draw if board is full, otherwise error
+                is_full = not any(EMPTY_CELL in row for row in current_board_list)
+                final_status = "draw" if is_full else "error_ai_stuck"  # Custom status
+                crud_game.update_game_state(
+                    db,
+                    game_id_uuid,
+                    status=final_status,
+                    current_player_token=None,
+                    winner_token="draw" if is_full else None,
+                )
+                game_over_payload = {
+                    "game_id": active_game_id_str,
+                    "board": current_board_list,
+                    "status": final_status,
+                    "winner_token": "draw" if is_full else None,
+                    "winning_player_piece": None,
+                }
+                await manager.broadcast_to_game(
+                    {"type": "GAME_OVER", "payload": game_over_payload},
+                    active_game_id_str,
+                )
+                break
+
+            ai_row, ai_side = ai_move_tuple
+            print(
+                f"AvA Game {active_game_id_str}: AI {ai_player_token} chose r{ai_row},s{ai_side}"
+            )
+
+            # Apply AI's move (current_board_list is a fresh copy from DB state)
+            ai_placed_coords = apply_move(
+                current_board_list, ai_row, ai_side, ai_player_piece
+            )
+            if not ai_placed_coords:  # Should not happen if AI is well-behaved
+                print(
+                    f"AvA ERROR: AI {ai_player_token} made an invalid board move: {ai_move_tuple}"
+                )
+                # Handle error, maybe end game as error for this AI
+                break
+
+            ai_move_board_json = {"board": current_board_list}
+            ai_new_status = "active"
+            ai_new_winner_token = None
+            ai_next_player_token = (
+                current_game_state.player1_token
+                if ai_player_token == current_game_state.player2_token
+                else current_game_state.player2_token
+            )
+            ai_game_over = False
+
+            if check_win(current_board_list, ai_player_piece, ai_placed_coords):
+                ai_new_status = f"player_{ai_player_piece.lower()}_wins"
+                ai_new_winner_token = ai_player_token
+                ai_game_over = True
+            elif check_draw(current_board_list):
+                ai_new_status = "draw"
+                ai_new_winner_token = "draw"
+                ai_game_over = True
+
+            updated_game_after_ai_move = crud_game.update_game_state(
+                db=db,
+                game_id=game_id_uuid,
+                board_state=ai_move_board_json,
+                current_player_token=ai_next_player_token if not ai_game_over else None,
+                status=ai_new_status,
+                winner_token=ai_new_winner_token,
+            )
+            if not updated_game_after_ai_move:
+                break  # Error saving state
+
+            # Broadcast result
+            final_board_to_broadcast: GameLogicBoard = (
+                updated_game_after_ai_move.board_state.get("board", [])
+            )
+            if ai_game_over:
+                game_over_payload = {
+                    "game_id": active_game_id_str,
+                    "board": final_board_to_broadcast,
+                    "status": updated_game_after_ai_move.status,
+                    "winner_token": updated_game_after_ai_move.winner_token,
+                    "winning_player_piece": (
+                        ai_player_piece
+                        if updated_game_after_ai_move.winner_token != "draw"
+                        else None
+                    ),
+                }
+                await manager.broadcast_to_game(
+                    {"type": "GAME_OVER", "payload": game_over_payload},
+                    active_game_id_str,
+                )
+                break  # Game over
+            else:
+                game_update_payload = {
+                    "game_id": active_game_id_str,
+                    "board": final_board_to_broadcast,
+                    "current_player_token": updated_game_after_ai_move.current_player_token,
+                    "last_move": {
+                        "player_token": ai_player_token,
+                        "player_piece": ai_player_piece,
+                        "row": ai_placed_coords[0],
+                        "col": ai_placed_coords[1],
+                        "side_played": ai_side,
+                    },
+                }
+                await manager.broadcast_to_game(
+                    {"type": "GAME_UPDATE", "payload": game_update_payload},
+                    active_game_id_str,
+                )
+
+        print(f"AI vs AI Game Loop Ended for: {active_game_id_str}")
+    except Exception as e:
+        print(f"Exception in run_ai_vs_ai_game for {game_id_uuid}: {e}")
+        # Optionally broadcast an error to spectators
+        try:
+            await manager.broadcast_to_game(
+                {
+                    "type": "ERROR",
+                    "payload": {"message": "Critical error in AI vs AI game."},
+                },
+                str(game_id_uuid),
+            )
+        except:
+            pass  # Ignore if broadcast fails
+    finally:
+        db.close()
 
 
 @router.websocket(
@@ -63,154 +262,216 @@ async def websocket_endpoint(
                     f"Received message from {client_id}: type={message_type}, payload={payload}"
                 )
 
-                if message_type == "CREATE_GAME":
-                    player1_token = payload.get("player_temp_id", client_id)
+                if (
+                    message_type == "CREATE_GAME"
+                ):  # Note: This block is getting long, refactor later
+                    player_human_token = payload.get(
+                        "player_temp_id", client_id
+                    )  # Spectator's client_id
                     game_mode_from_payload = payload.get("mode", "PVP").upper()
-                    # Default to EASY if mode is PVE and no difficulty specified
-                    ai_difficulty = payload.get(
-                        "difficulty",
-                        "EASY" if game_mode_from_payload.startswith("PVE") else None,
+
+                    ai1_difficulty_str = (
+                        payload.get("ai1_difficulty", "EASY").upper()
+                        if game_mode_from_payload == "AVA"
+                        else None
                     )
-                    if ai_difficulty:  # Ensure uppercase if provided
-                        ai_difficulty = ai_difficulty.upper()
+                    ai2_difficulty_str = (
+                        payload.get("ai2_difficulty", "EASY").upper()
+                        if game_mode_from_payload == "AVA"
+                        else None
+                    )
+
+                    # For PVE, get ai_difficulty if not AVA
+                    pve_ai_difficulty_str = None
+                    if (
+                        game_mode_from_payload.startswith("PVE")
+                        and game_mode_from_payload != "AVA"
+                    ):
+                        pve_ai_difficulty_str = payload.get(
+                            "difficulty", "EASY"
+                        ).upper()
 
                     db_game_mode = game_mode_from_payload
-                    if game_mode_from_payload.startswith("PVE"):
-                        if not ai_difficulty or ai_difficulty not in [
-                            "EASY",
-                            "MEDIUM",
-                            "HARD",
-                        ]:  # Validate difficulty
+                    if (
+                        game_mode_from_payload.startswith("PVE")
+                        and pve_ai_difficulty_str
+                    ):
+                        if pve_ai_difficulty_str not in ["EASY", "MEDIUM", "HARD"]:
+                            # ... (error handling for invalid PVE difficulty) ...
                             await manager.send_personal_message(
                                 {
                                     "type": "ERROR",
                                     "payload": {
-                                        "message": "Invalid or missing AI difficulty for PVE mode."
+                                        "message": "Invalid AI difficulty for PVE."
                                     },
                                 },
                                 websocket,
                             )
                             continue
-                        db_game_mode = f"PVE_{ai_difficulty}"  # e.g., PVE_EASY
+                        db_game_mode = f"PVE_{pve_ai_difficulty_str}"
+                    elif game_mode_from_payload == "AVA":
+                        if (
+                            not ai1_difficulty_str
+                            or ai1_difficulty_str not in ["EASY", "MEDIUM", "HARD"]
+                            or not ai2_difficulty_str
+                            or ai2_difficulty_str not in ["EASY", "MEDIUM", "HARD"]
+                        ):
+                            await manager.send_personal_message(
+                                {
+                                    "type": "ERROR",
+                                    "payload": {
+                                        "message": "Invalid AI difficulties for AVA."
+                                    },
+                                },
+                                websocket,
+                            )
+                            continue
+                        db_game_mode = f"AVA_{ai1_difficulty_str}_VS_{ai2_difficulty_str}"  # e.g., AVA_EASY_VS_MEDIUM
 
-                    # Validate general game mode
-                    # Allowing PVP, PVE_EASY, PVE_MEDIUM, PVE_HARD (Medium/Hard are future)
-                    allowed_game_modes = ["PVP", "PVE_EASY", "PVE_MEDIUM", "PVE_HARD"]
+                    allowed_game_modes = ["PVP"]
+                    for d1 in ["EASY", "MEDIUM", "HARD"]:
+                        allowed_game_modes.append(f"PVE_{d1}")
+                        for d2 in ["EASY", "MEDIUM", "HARD"]:
+                            allowed_game_modes.append(f"AVA_{d1}_VS_{d2}")
 
                     if db_game_mode not in allowed_game_modes:
                         await manager.send_personal_message(
                             {
                                 "type": "ERROR",
                                 "payload": {
-                                    "message": f"Invalid game mode specified: {db_game_mode}"
+                                    "message": f"Unsupported game mode: {db_game_mode}"
                                 },
                             },
                             websocket,
                         )
                         continue
 
+                    player1_token_for_game = (
+                        player_human_token  # Human client is initially P1 for PvE/PvP
+                    )
                     player2_token_for_game = None
                     initial_status = "waiting_for_player2"  # Default for PVP
 
-                    if db_game_mode.startswith("PVE"):
+                    if db_game_mode.startswith("PVE"):  # Player vs AI
                         difficulty_part = db_game_mode.split("_")[1]
-                        player2_token_for_game = (
-                            f"AI_{difficulty_part}_PLAYER"  # Special token for AI
+                        player2_token_for_game = f"AI_{difficulty_part}_PLAYER"
+                        initial_status = "active"
+                    elif db_game_mode.startswith("AVA"):  # AI vs AI
+                        player1_token_for_game = (
+                            f"AI_{ai1_difficulty_str}_PLAYER_1"  # AI1 is P1 (X)
                         )
-                        initial_status = "active"  # PvE games start immediately
+                        player2_token_for_game = (
+                            f"AI_{ai2_difficulty_str}_PLAYER_2"  # AI2 is P2 (O)
+                        )
+                        initial_status = "active"
+                        # The connected human client is a spectator for AVA games.
 
                     db_game = crud_game.create_game_db(
                         db=db,
-                        player1_token=player1_token,
+                        player1_token=player1_token_for_game,
                         player2_token=player2_token_for_game,
-                        initial_current_player_token=player1_token,
+                        initial_current_player_token=player1_token_for_game,  # AI1 or Human P1 starts
                         game_mode=db_game_mode,
-                        # status will be set by create_game_db:
-                        # if player2_token is None (PVP waiting), it defaults to 'waiting_for_player2'
-                        # if player2_token is present (PVP joined or PVE), it defaults to 'active'
                     )
-                    # If initial_status needs to override crud_game_db's default based on PVE:
-                    if db_game.status != initial_status and db_game_mode.startswith(
-                        "PVE"
+                    if db_game.status != initial_status and (
+                        db_game_mode.startswith("PVE") or db_game_mode.startswith("AVA")
                     ):
                         db_game = crud_game.update_game_state(
                             db, game_id=db_game.id, status=initial_status
                         )
 
                     active_game_id = str(db_game.id)
+                    # Spectator joins the game room
                     await manager.connect(websocket, active_game_id)
 
-                    game_created_message = (
-                        f"Game created. You are Player 1 ({PLAYER_X})."
-                    )
-                    if (
-                        db_game.game_mode == "PVP" and not db_game.player2_token
-                    ):  # Check actual game mode from DB
+                    game_created_message = f"Game mode: {db_game.game_mode}."
+                    if db_game.game_mode == "PVP":
                         game_created_message += " Waiting for Player 2..."
                     elif db_game.game_mode.startswith("PVE"):
-                        actual_ai_difficulty = db_game.game_mode.split("_")[1]
                         game_created_message += (
-                            f" Playing against {actual_ai_difficulty } AI."
+                            f" You are Player 1 ({PLAYER_X}) playing."
                         )
+                    elif db_game.game_mode.startswith("AVA"):
+                        game_created_message += " Spectating AI vs AI."
 
-                    response_payload = {
-                        "game_id": active_game_id,
-                        "player_token": player1_token,
-                        "player_piece": PLAYER_X,
-                        "message": game_created_message,
-                    }
                     await manager.send_personal_message(
-                        {"type": "GAME_CREATED", "payload": response_payload}, websocket
+                        {
+                            "type": "GAME_CREATED",  # Spectator gets this too
+                            "payload": {
+                                "game_id": active_game_id,
+                                "player_token": (
+                                    player_human_token
+                                    if not db_game_mode.startswith("AVA")
+                                    else "SPECTATOR"
+                                ),
+                                "player_piece": (
+                                    PLAYER_X
+                                    if not db_game_mode.startswith("AVA")
+                                    else None
+                                ),  # Spectator has no piece
+                                "game_mode": db_game.game_mode,  # Send mode back
+                                "message": game_created_message,
+                            },
+                        },
+                        websocket,
                     )
 
-                    if db_game.game_mode == "PVP" and not db_game.player2_token:
-                        await manager.send_personal_message(
-                            {
-                                "type": "WAITING_FOR_PLAYER",
-                                "payload": {"game_id": active_game_id},
-                            },
-                            websocket,
-                        )
-                    elif db_game.game_mode.startswith("PVE"):
+                    if db_game.game_mode.startswith(
+                        "PVE"
+                    ) or db_game.game_mode.startswith("AVA"):
                         board_list_for_start: GameLogicBoard = db_game.board_state.get(
                             "board", service_create_board()
                         )
-
-                        p1_token = (
-                            db_game.player1_token
-                        )  # Should be player1_token from above
-                        p2_token_ai = (
+                        p1_actual_token = db_game.player1_token  # Could be human or AI1
+                        p2_actual_token = (
                             db_game.player2_token
-                        )  # Should be "AI_EASY_PLAYER" etc.
+                        )  # Could be human P2 or AI2
 
-                        if not p1_token or not p2_token_ai:
-                            print(
-                                f"ERROR CREATING PVE GAME START: P1 or P2(AI) token missing. P1: {p1_token}, P2: {p2_token_ai}"
-                            )
-                            await manager.send_personal_message(
-                                {
-                                    "type": "ERROR",
-                                    "payload": {
-                                        "message": "Internal error setting up PVE game."
-                                    },
-                                },
-                                websocket,
-                            )
-                            continue
+                        if not p1_actual_token or not p2_actual_token:
+                            continue  # Error check
 
                         game_start_payload = {
                             "game_id": active_game_id,
                             "board": board_list_for_start,
-                            "current_player_token": db_game.current_player_token,
-                            "players": {p1_token: PLAYER_X, p2_token_ai: PLAYER_O},
-                            "your_piece": PLAYER_X,
-                            "your_token": p1_token,
+                            "current_player_token": db_game.current_player_token,  # AI1 or Human P1
+                            "players": {
+                                p1_actual_token: PLAYER_X,
+                                p2_actual_token: PLAYER_O,
+                            },
+                            # For spectator in AVA, your_piece/your_token might be different
+                            "your_piece": (
+                                PLAYER_X
+                                if db_game.player1_token == player_human_token
+                                else (None if db_game_mode.startswith("AVA") else None)
+                            ),
+                            "your_token": (
+                                player_human_token
+                                if db_game.player1_token == player_human_token
+                                else (None if db_game_mode.startswith("AVA") else None)
+                            ),
                         }
-                        await manager.send_personal_message(
+                        # Send GAME_START to the spectator(s) in the room
+                        await manager.broadcast_to_game(
                             {"type": "GAME_START", "payload": game_start_payload},
-                            websocket,
+                            active_game_id,
                         )
 
+                        # If AVA, automatically start AI turns
+                        if db_game.game_mode.startswith(
+                            "AVA"
+                        ) and db_game.current_player_token.startswith("AI_"):
+                            # Trigger the first AI's move (will be handled by MAKE_MOVE logic if we send a "dummy" trigger or refactor)
+                            # For now, let's initiate the AI loop here directly or by calling a helper
+                            print(
+                                f"AVA Game {active_game_id}: Starting AI vs AI play. First turn: {db_game.current_player_token}"
+                            )
+                            # We need a task to run the AI vs AI game loop
+                            # This is a good place for an asyncio task
+                            asyncio.create_task(
+                                run_ai_vs_ai_game(
+                                    db_game.id, db
+                                )  # Pass a new DB session if get_db isn't ideal for long task
+                            )
                 elif message_type == "JOIN_GAME":
                     game_to_join_id_str = payload.get("game_id")
                     player2_temp_id = payload.get(
@@ -503,6 +764,17 @@ async def websocket_endpoint(
                                 "type": "ERROR",
                                 "payload": {
                                     "message": f"Game is not active. Status: {db_game.status}"
+                                },
+                            },
+                            websocket,
+                        )
+                        continue
+                    if db_game.game_mode.startswith("AVA"):  # AI vs AI
+                        await manager.send_personal_message(
+                            {
+                                "type": "ERROR",
+                                "payload": {
+                                    "message": "Spectators cannot make moves in AI vs AI games."
                                 },
                             },
                             websocket,

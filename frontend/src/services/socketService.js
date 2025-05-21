@@ -16,6 +16,7 @@ const generateClientId = () => {
 }
 
 const clientId = generateClientId() // Generate a unique ID for this client session
+export const getClientId = () => clientId;
 
 export const connectWebSocket = (
     messageCallback, // General message handler

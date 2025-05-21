@@ -5,7 +5,8 @@ import GameSetup from '../components/GameSetup'
 import Board from '../components/board/Board' // Uncomment
 import Controls from '../components/Controls'   // Import Controls
 import GameInfo from '../components/GameInfo' // Will add later 
-import { connectWebSocket, sendMessage, getSocket, makeMove as sendMakeMoveWebSocket } from '../services/socketService'
+import { connectWebSocket, getClientId, getSocket, makeMove as sendMakeMoveWebSocket } from '../services/socketService'
+
 
 const GamePage = () => {
     // gameData will store: game_id, player_token (this client's), player_piece (this client's X or O)
@@ -43,10 +44,12 @@ const GamePage = () => {
 
     const handleGameCreatedOrJoined = useCallback((payload, type) => {
         console.log(`GamePage: ${type} success:`, payload)
+        const currentClientId = getClientId();
         setGameData({
             game_id: payload.game_id,
-            player_token: payload.player_token,
+            player_token: payload.player_token === "SPECTATOR" ? currentClientId : payload.player_token,
             player_piece: payload.player_piece,
+            game_mode: payload.game_mode
         })
         if (type === "GAME_CREATED" && payload.message) {
             toast({ title: payload.message, status: "info", duration: 3000, isClosable: true })
@@ -252,7 +255,7 @@ const GamePage = () => {
 
                 <Board boardData={gameState.board} />
 
-                {gameState.status === 'active' && (
+                {gameState.status === 'active' && gameData && gameData.game_mode && !gameData.game_mode.startsWith('AVA') && (
                     <Controls
                         onMakeMove={handleMakeMove}
                         isDisabled={controlsDisabled}
@@ -283,10 +286,9 @@ const GamePage = () => {
                             onClick={resetGameState}
                             colorScheme="pink"
                             size="lg"
-                            mt={4}
-                            isFullWidth
+                        mt={4}
                         >
-                            Play Again (New Game)
+                        {gameData?.game_mode?.startsWith('AVA') ? "Spectate New AI Game" : "Play Again (New Game)"}
                         </Button>
                     )}
             </VStack>
