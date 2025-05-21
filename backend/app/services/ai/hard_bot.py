@@ -16,11 +16,11 @@ from app.services.game_logic import (
 )
 
 
-# Helper from medium_bot, can be shared or copied
-def _simulate_apply_move(
+# Use the same helper as MediumBot or define it here
+def _simulate_apply_move_and_get_coords(
     board: GameLogicBoard, row: int, side: str, player: str
 ) -> Optional[Tuple[int, int]]:
-    target_row = board[row]  # Assumes board is a mutable copy
+    target_row = board[row]
     if side == "L":
         for c in range(COLS):
             if target_row[c] == EMPTY_CELL:
@@ -35,104 +35,103 @@ def _simulate_apply_move(
 
 
 class HardAIBot(BaseBot):
+
     def __init__(
         self, player_piece: str, search_depth: int = 3
-    ):  # Increased default depth
+    ):  # Default depth 3 for Hard
         super().__init__(player_piece)
         self.opponent_piece = PLAYER_O if self.player_piece == PLAYER_X else PLAYER_X
         self.search_depth = search_depth
-        # For very deep searches, transposition tables could be added, but that's advanced.
 
     def _get_all_valid_moves(self, board: GameLogicBoard) -> List[Tuple[int, str]]:
+        # ... (same as MediumBot, with random.shuffle)
         valid_moves = []
         for r in range(ROWS):
             if is_valid_move(board, r, "L"):
                 valid_moves.append((r, "L"))
             if is_valid_move(board, r, "R"):
                 valid_moves.append((r, "R"))
-        random.shuffle(valid_moves)  # Shuffle for variety if scores are equal
+        random.shuffle(valid_moves)
         return valid_moves
 
-    def _evaluate_line(self, line: List[Optional[str]], piece: str) -> int:
+    def _evaluate_line(
+        self, line: List[Optional[str]], piece_to_evaluate_for: str
+    ) -> int:
+        # Using a more aggressive heuristic from our previous HardBot iteration
         score = 0
-        opponent_piece = self.opponent_piece  # Use instance opponent_piece
+        ai_piece = piece_to_evaluate_for
+        opponent_piece = (
+            self.opponent_piece if ai_piece == self.player_piece else self.player_piece
+        )
 
-        piece_count = line.count(piece)
+        ai_count = line.count(ai_piece)
         opponent_count = line.count(opponent_piece)
         empty_count = line.count(EMPTY_CELL)
 
-        if piece_count == CONNECT_N:
-            return 1000000  # AI wins (higher score than Medium)
+        if ai_count == CONNECT_N:
+            return 10000000  # AI wins
         if opponent_count == CONNECT_N:
-            return -1000000  # Opponent wins
+            return -10000000  # Opponent wins
 
-        # More aggressive scoring for potential wins and blocking threats
-        if (
-            piece_count == CONNECT_N - 1 and empty_count == 1
-        ):  # Three in a row with one empty
-            score += 5000
-        elif (
-            piece_count == CONNECT_N - 2 and empty_count == 2
-        ):  # Two in a row with two empty (open ended)
-            score += 500
-        elif (
-            piece_count == CONNECT_N - 3 and empty_count == 3
-        ):  # One piece with three empty (less valuable but still something)
-            score += 50
+        if ai_count == CONNECT_N - 1 and empty_count == 1:
+            score += 50000  # AI imminent win
+        elif ai_count == CONNECT_N - 2 and empty_count == 2:
+            score += 5000  # AI strong setup (2 open)
+        elif ai_count == CONNECT_N - 2 and empty_count == 1:
+            score += 200  # AI 2, 1 empty, 1 opp (less ideal)
+        elif ai_count == CONNECT_N - 3 and empty_count == 3:
+            score += 500  # AI developing line (3 open)
 
-        if (
-            opponent_count == CONNECT_N - 1 and empty_count == 1
-        ):  # Opponent has three (urgent block)
-            score -= 20000  # Increased penalty
-        elif (
-            opponent_count == CONNECT_N - 2 and empty_count == 2
-        ):  # Opponent has two open
-            score -= 200
-        elif (
-            opponent_count == CONNECT_N - 3 and empty_count == 3
-        ):  # Opponent has one open
-            score -= 20
+        if opponent_count == CONNECT_N - 1 and empty_count == 1:
+            score -= 250000  # Opponent imminent win (CRITICAL BLOCK)
+        elif opponent_count == CONNECT_N - 2 and empty_count == 2:
+            score -= 25000  # Opponent strong setup
+        elif opponent_count == CONNECT_N - 2 and empty_count == 1:
+            score -= 1000
+        elif opponent_count == CONNECT_N - 3 and empty_count == 3:
+            score -= 250
 
         return score
 
-    def _evaluate_board(self, board: GameLogicBoard, for_player: str) -> int:
+    def _evaluate_board(
+        self, board: GameLogicBoard
+    ) -> int:  # Always from AI's perspective
         score = 0
+        # Center control bonus: Rows 2, 3, 4 for a 7-row board
+        center_rows = [
+            ROWS // 2 - 1,
+            ROWS // 2,
+            ROWS // 2 + 1,
+        ]  # e.g., rows 2, 3, 4 for 7 rows
+        for r_idx, row_val in enumerate(board):
+            for cell_val in row_val:
+                if r_idx in center_rows:
+                    if cell_val == self.player_piece:
+                        score += 5  # Small bonus for AI in center rows
+                    elif cell_val == self.opponent_piece:
+                        score -= 5  # Small penalty for Opponent in center
 
-        # Centrality bonus (simple version: pieces in middle rows/cols are slightly better)
-        # This is very game-specific for Side-Stacker.
-        # For side stacker, maybe rows near center, or just having more pieces.
-        # For now, let's focus on lines. A more complex heuristic could add this.
-        # Example:
-        # for r_idx, row_val in enumerate(board):
-        #     for c_idx, cell_val in enumerate(row_val):
-        #         if cell_val == for_player:
-        #             if 2 <= r_idx <= ROWS - 3: # Middle rows
-        #                 score += 1 # Small bonus for central rows
-        #         elif cell_val == self.opponent_piece:
-        #             if 2 <= r_idx <= ROWS - 3:
-        #                 score -= 1
-
-        # Horizontal
-        for r in range(ROWS):
+        # Line evaluation (same structure as MediumBot, but uses HardBot's _evaluate_line)
+        for r in range(ROWS):  # Horizontal
             for c in range(COLS - CONNECT_N + 1):
-                window = [board[r][c + i] for i in range(CONNECT_N)]
-                score += self._evaluate_line(window, for_player)
-        # Vertical
-        for c in range(COLS):
+                score += self._evaluate_line(
+                    [board[r][c + i] for i in range(CONNECT_N)], self.player_piece
+                )
+        for c in range(COLS):  # Vertical
             for r in range(ROWS - CONNECT_N + 1):
-                window = [board[r + i][c] for i in range(CONNECT_N)]
-                score += self._evaluate_line(window, for_player)
-        # Positive Diagonal (\)
-        for r in range(ROWS - CONNECT_N + 1):
+                score += self._evaluate_line(
+                    [board[r + i][c] for i in range(CONNECT_N)], self.player_piece
+                )
+        for r in range(ROWS - CONNECT_N + 1):  # Positive Diagonal
             for c in range(COLS - CONNECT_N + 1):
-                window = [board[r + i][c + i] for i in range(CONNECT_N)]
-                score += self._evaluate_line(window, for_player)
-        # Negative Diagonal (/)
-        for r in range(CONNECT_N - 1, ROWS):
+                score += self._evaluate_line(
+                    [board[r + i][c + i] for i in range(CONNECT_N)], self.player_piece
+                )
+        for r in range(CONNECT_N - 1, ROWS):  # Negative Diagonal
             for c in range(COLS - CONNECT_N + 1):
-                window = [board[r - i][c + i] for i in range(CONNECT_N)]
-                score += self._evaluate_line(window, for_player)
-
+                score += self._evaluate_line(
+                    [board[r - i][c + i] for i in range(CONNECT_N)], self.player_piece
+                )
         return score
 
     def minimax(
@@ -142,142 +141,99 @@ class HardAIBot(BaseBot):
         alpha: float,
         beta: float,
         maximizing_player: bool,
-        last_move_coords: Optional[Tuple[int, int]] = None,
     ) -> int:
-        # Pass self.player_piece and self.opponent_piece to check_win
-        if last_move_coords and check_win(
-            board,
-            self.player_piece if maximizing_player else self.opponent_piece,
-            last_move_coords,
-        ):
-            # If check_win can use last_move_coords, this will be faster.
-            # The piece that just moved belongs to 'not maximizing_player' if we are evaluating for 'maximizing_player'
-            if (
-                maximizing_player
-            ):  # This state resulted from opponent's move, so opponent might have won
-                return -1000000 - depth
-            else:  # This state resulted from AI's move, so AI might have won
-                return 1000000 + depth
-
-        # Fallback full board check if no last_move_coords or check_win doesn't use it optimally yet
-        # For simplicity, our current check_win doesn't use last_move_coords optimally for minimax decision logic
+        # ... (Minimax logic is identical to MediumBot's, it just uses HardBot's _evaluate_board and deeper depth)
         if check_win(board, self.player_piece):
-            return 1000000 + depth
+            return 10000000 + depth
         if check_win(board, self.opponent_piece):
-            return -1000000 - depth
-
+            return -10000000 - depth
         is_board_full = not any(EMPTY_CELL in row for row in board)
         if is_board_full or depth == 0:
-            return self._evaluate_board(board, self.player_piece)
-
+            return self._evaluate_board(board)
         valid_moves = self._get_all_valid_moves(board)
         if not valid_moves:
-            return self._evaluate_board(board, self.player_piece)
+            return self._evaluate_board(board)
 
-        if maximizing_player:  # AI's turn
+        if maximizing_player:
             max_eval = -math.inf
-            for move in valid_moves:
-                row, side = move
-                temp_board = [r[:] for r in board]
-                coords = _simulate_apply_move(temp_board, row, side, self.player_piece)
-                if not coords:
-                    continue  # Should not happen if valid_moves is correct
-
-                eval_score = self.minimax(
-                    temp_board, depth - 1, alpha, beta, False, coords
-                )
-                max_eval = max(max_eval, eval_score)
-                alpha = max(alpha, eval_score)
+            for r, s in valid_moves:
+                temp_board = [row[:] for row in board]
+                _simulate_apply_move_and_get_coords(temp_board, r, s, self.player_piece)
+                evaluation = self.minimax(temp_board, depth - 1, alpha, beta, False)
+                max_eval = max(max_eval, evaluation)
+                alpha = max(alpha, evaluation)
                 if beta <= alpha:
                     break
             return max_eval
-        else:  # Opponent's turn
+        else:
             min_eval = math.inf
-            for move in valid_moves:
-                row, side = move
-                temp_board = [r[:] for r in board]
-                coords = _simulate_apply_move(
-                    temp_board, row, side, self.opponent_piece
+            for r, s in valid_moves:
+                temp_board = [row[:] for row in board]
+                _simulate_apply_move_and_get_coords(
+                    temp_board, r, s, self.opponent_piece
                 )
-                if not coords:
-                    continue
-
-                eval_score = self.minimax(
-                    temp_board, depth - 1, alpha, beta, True, coords
-                )
-                min_eval = min(min_eval, eval_score)
-                beta = min(beta, eval_score)
+                evaluation = self.minimax(temp_board, depth - 1, alpha, beta, True)
+                min_eval = min(min_eval, evaluation)
+                beta = min(beta, evaluation)
                 if beta <= alpha:
                     break
             return min_eval
 
     def get_move(self, board: GameLogicBoard) -> Optional[Tuple[int, str]]:
+        # ... (get_move logic with win/block checks is identical to MediumBot's refined version)
+        # It will simply use HardBot's minimax if those checks don't yield a move.
         valid_moves = self._get_all_valid_moves(board)
         if not valid_moves:
             return None
         if len(valid_moves) == 1:
-            return valid_moves[0]  # Only one choice
+            return valid_moves[0]
 
+        # 1. Check for AI's immediate winning move
+        for move_action in valid_moves:
+            r, s = move_action
+            temp_board_ai_win = [row[:] for row in board]
+            coords = _simulate_apply_move_and_get_coords(
+                temp_board_ai_win, r, s, self.player_piece
+            )
+            if coords and check_win(temp_board_ai_win, self.player_piece, coords):
+                return move_action
+
+        # 2. Check to block opponent's immediate winning move
+        opponent_winning_moves_to_block = []
+        for opp_r in range(ROWS):
+            for opp_s in ["L", "R"]:
+                if is_valid_move(board, opp_r, opp_s):
+                    temp_board_opp_check = [row[:] for row in board]
+                    opp_coords = _simulate_apply_move_and_get_coords(
+                        temp_board_opp_check, opp_r, opp_s, self.opponent_piece
+                    )
+                    if opp_coords and check_win(
+                        temp_board_opp_check, self.opponent_piece, opp_coords
+                    ):
+                        if (opp_r, opp_s) in valid_moves:
+                            opponent_winning_moves_to_block.append((opp_r, opp_s))
+
+        if opponent_winning_moves_to_block:
+            return opponent_winning_moves_to_block[0]
+
+        # 3. Minimax
         best_score = -math.inf
-        best_move = None
+        best_move = None  # random.choice(valid_moves) # Ensure a fallback if all scores are -inf
         alpha = -math.inf
         beta = math.inf
 
-        # Prioritize immediate win/loss checks from MediumBot can be kept
-        # Or rely purely on minimax if depth is sufficient. For "Hard", minimax should find these.
-        # For speed, keeping quick checks might be good.
-
-        for move_action in valid_moves:  # Check for immediate win
+        for move_action in valid_moves:
             r, s = move_action
-            temp_b = [row[:] for row in board]
-            coords = _simulate_apply_move(temp_b, r, s, self.player_piece)
-            if coords and check_win(temp_b, self.player_piece, coords):
-                # print(f"HardAI ({self.player_piece}): Immediate win with {move_action}")
-                return move_action
+            temp_board = [row[:] for row in board]
+            _simulate_apply_move_and_get_coords(temp_board, r, s, self.player_piece)
+            score = self.minimax(temp_board, self.search_depth - 1, alpha, beta, False)
+            if score > best_score:
+                best_score = score
+                best_move = move_action
+            alpha = max(alpha, score)
 
-        # Check to block immediate opponent win
-        for move_action in valid_moves:  # AI's potential moves
-            r, s = move_action
-            ai_landing_spot_board = [row[:] for row in board]
-            sim_coords_ai_landing = _simulate_apply_move(
-                ai_landing_spot_board, r, s, "TEMP"
-            )
-
-            if sim_coords_ai_landing:
-                opponent_win_check_board = [row[:] for row in board]
-                # What if opponent played at the spot AI is considering landing on?
-                opponent_win_check_board[sim_coords_ai_landing[0]][
-                    sim_coords_ai_landing[1]
-                ] = self.opponent_piece
-                if check_win(
-                    opponent_win_check_board, self.opponent_piece, sim_coords_ai_landing
-                ):
-                    # print(f"HardAI ({self.player_piece}): Blocking opponent win with {move_action}")
-                    return move_action
-
-        # Minimax for strategic move
-        for move in valid_moves:
-            row, side = move
-            temp_board = [r[:] for r in board]
-            coords = _simulate_apply_move(temp_board, row, side, self.player_piece)
-            if not coords:
-                continue  # Should not happen with valid_moves
-
-            eval_score = self.minimax(
-                temp_board, self.search_depth - 1, alpha, beta, False, coords
-            )  # Opponent's turn next
-
-            if eval_score > best_score:
-                best_score = eval_score
-                best_move = move
-
-            alpha = max(alpha, eval_score)  # Update alpha for root search
-            # No beta pruning at the root's direct children in this loop structure,
-            # pruning happens deeper in the recursive calls.
-
-        # print(f"HardAI ({self.player_piece}): Chose move {best_move} with score {best_score} (depth {self.search_depth})")
-        return best_move if best_move else random.choice(valid_moves)  # Fallback
-
+        # print(f"HardAI ({self.player_piece}): Chose {best_move} (score: {best_score}, depth: {self.search_depth}) via Minimax.")
+        return best_move if best_move else (valid_moves[0] if valid_moves else None)
 
 if __name__ == "__main__":
     from app.services.game_logic import (

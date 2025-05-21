@@ -18,7 +18,7 @@ from app.services.game_logic import (  # Import necessary functions from game_lo
 class EasyAIBot(BaseBot):
     def __init__(self, player_piece: str):
         super().__init__(player_piece)
-        self.opponent_piece = PLAYER_O if self.player_piece == PLAYER_X else PLAYER_X
+        # self.opponent_piece = PLAYER_O if self.player_piece == PLAYER_X else PLAYER_X
 
     def _get_all_valid_moves(self, board: GameLogicBoard) -> List[Tuple[int, str]]:
         valid_moves = []
@@ -32,99 +32,33 @@ class EasyAIBot(BaseBot):
     def get_move(self, board: GameLogicBoard) -> Optional[Tuple[int, str]]:
         valid_moves = self._get_all_valid_moves(board)
         if not valid_moves:
-            return None  # No valid moves left (should mean draw or game ended before AI's turn)
+            return None
 
-        # 1. Check for an immediate winning move for self
+        # 1. Immediate winning move
         for move in valid_moves:
             row, side = move
-            # Create a temporary copy of the board to simulate the move
-            temp_board = [row_list[:] for row_list in board]  # Deep copy
-
-            # Simulate applying the move (need coordinates for check_win)
-            # We need a way to get coordinates without actually modifying the main board
-            # For simplicity, let's simulate the placement to find coordinates
-            # This is a bit clunky; a better approach might be for apply_move to not modify
-            # if a 'simulate' flag is true, or have a separate simulate_move function.
-            # For EasyAI, this direct simulation is probably fine.
-
-            # Find where the piece would land
-            temp_target_row = temp_board[row]
+            temp_board = [row_list[:] for row_list in board]
             placed_coords = None
+            temp_target_row = temp_board[row]
             if side == "L":
                 for c in range(COLS):
                     if temp_target_row[c] == EMPTY_CELL:
-                        temp_target_row[c] = self.player_piece  # Temporarily place
+                        temp_target_row[c] = self.player_piece
                         placed_coords = (row, c)
                         break
-            elif side == "R":
+            else:  # "R"
                 for c in range(COLS - 1, -1, -1):
                     if temp_target_row[c] == EMPTY_CELL:
-                        temp_target_row[c] = self.player_piece  # Temporarily place
+                        temp_target_row[c] = self.player_piece
                         placed_coords = (row, c)
                         break
-
             if placed_coords and check_win(
                 temp_board, self.player_piece, placed_coords
             ):
-                # print(f"EasyAI ({self.player_piece}): Found winning move at {move}")
-                return move  # Take the winning move
-            # No need to revert temp_board change as it's a copy for this move check only
+                return move  # Take winning move
 
-        # 2. Check to block opponent's immediate winning move
-        for move in valid_moves:  # Iterate through AI's possible moves
-            row, side = move
-            # Simulate AI making this move, then check if opponent can win on THEIR next turn
-            # This is becoming more complex. For EasyAI, let's simplify:
-            # Check if opponent has a winning move on *their* current turn if AI doesn't move.
-            # No, the rule is: if AI can block an *opponent's next winning move*.
-
-            # So, for each of AI's valid moves:
-            #   - AI makes its move (temp_board_after_ai_move)
-            #   - Then, iterate all of opponent's possible next moves on temp_board_after_ai_move
-            #   - If any of AI's moves PREVENTS ALL opponent's winning replies, that's complex.
-
-            # Simpler "block" for Easy AI:
-            # Iterate through opponent's possible winning moves on the *current* board.
-            # If AI makes a move `(r,s)` that lands on the same spot as an opponent's winning move,
-            # that's a block.
-
-            # Create a temporary copy of the board to simulate the AI's potential block
-            temp_board_for_block_check = [row_list[:] for row_list in board]
-            # Simulate AI making its move (row, side)
-            sim_placed_coords_ai = None
-            temp_target_row_ai = temp_board_for_block_check[row]
-            if side == "L":
-                for c in range(COLS):
-                    if temp_target_row_ai[c] == EMPTY_CELL:
-                        sim_placed_coords_ai = (row, c)
-                        break
-            elif side == "R":
-                for c in range(COLS - 1, -1, -1):
-                    if temp_target_row_ai[c] == EMPTY_CELL:
-                        sim_placed_coords_ai = (row, c)
-                        break
-
-            # Now, check if opponent has a winning move on the ORIGINAL board
-            # that would land at sim_placed_coords_ai
-            if sim_placed_coords_ai:
-                # Temporarily place opponent's piece at that spot on a *different* temp board
-                # to see if it's a winning spot for them.
-                temp_board_opponent_win_check = [row_list[:] for row_list in board]
-                temp_board_opponent_win_check[sim_placed_coords_ai[0]][
-                    sim_placed_coords_ai[1]
-                ] = self.opponent_piece
-                if check_win(
-                    temp_board_opponent_win_check,
-                    self.opponent_piece,
-                    sim_placed_coords_ai,
-                ):
-                    # print(f"EasyAI ({self.player_piece}): Found blocking move at {move} for opponent's win at {sim_placed_coords_ai}")
-                    return move  # This move by AI blocks an opponent's win
-
-        # 3. Make a random valid move
-        # print(f"EasyAI ({self.player_piece}): Making random move.")
+        # 2. No block logic—just random
         return random.choice(valid_moves)
-
 
 if __name__ == "__main__":
     from app.services.game_logic import print_board, create_board

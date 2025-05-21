@@ -19,10 +19,10 @@ from app.services.game_logic import (
 
 
 # Helper to simulate applying a move and getting resulting coordinates
-def _simulate_apply_move(
+def _simulate_apply_move_and_get_coords(
     board: GameLogicBoard, row: int, side: str, player: str
 ) -> Optional[Tuple[int, int]]:
-    # Assumes board is a copy if it's not to be modified by this simulation
+    # IMPORTANT: This function MODIFIES the board passed to it. Always pass a copy.
     target_row = board[row]
     if side == "L":
         for c in range(COLS):
@@ -56,29 +56,34 @@ class MediumAIBot(BaseBot):
         random.shuffle(valid_moves)
         return valid_moves
 
-    def _evaluate_line(self, line: List[Optional[str]], piece: str) -> int:
+    def _evaluate_line(
+        self, line: List[Optional[str]], piece_to_evaluate_for: str
+    ) -> int:
+        # piece_to_evaluate_for is self.player_piece (the AI)
         score = 0
-        opponent_piece = PLAYER_O if piece == PLAYER_X else PLAYER_X
+        ai_piece = piece_to_evaluate_for
+        opponent_piece = (
+            self.opponent_piece if ai_piece == self.player_piece else self.player_piece
+        )
 
-        # Count occurrences of piece and opponent_piece in the window
-        piece_count = line.count(piece)
+        ai_count = line.count(ai_piece)
         opponent_count = line.count(opponent_piece)
         empty_count = line.count(EMPTY_CELL)
 
-        if piece_count == CONNECT_N:
+        if ai_count == CONNECT_N:
             return 100000  # AI wins
         if opponent_count == CONNECT_N:
-            return -100000  # Opponent wins (AI should avoid this state for opponent)
+            return -100000  # Opponent wins (very bad for AI)
 
-        if piece_count == CONNECT_N - 1 and empty_count == 1:
-            score += 100  # AI has three in a line with one empty
-        elif piece_count == CONNECT_N - 2 and empty_count == 2:
-            score += 10  # AI has two in a line with two empty
+        if ai_count == CONNECT_N - 1 and empty_count == 1:
+            score += 1000  # AI 3-in-a-row, 1 empty
+        elif ai_count == CONNECT_N - 2 and empty_count == 2:
+            score += 100  # AI 2-in-a-row, 2 empty
 
         if opponent_count == CONNECT_N - 1 and empty_count == 1:
-            score -= 1000  # Opponent has three in a line (high threat)
+            score -= 5000  # Opponent 3-in-a-row (CRITICAL BLOCK)
         elif opponent_count == CONNECT_N - 2 and empty_count == 2:
-            score -= 50  # Opponent has two in a line
+            score -= 50  # Opponent 2-in-a-row
 
         return score
 
@@ -139,7 +144,9 @@ class MediumAIBot(BaseBot):
                 row, side = move
                 temp_board = [r[:] for r in board]  # Create a copy
                 # Simulate AI's move
-                _simulate_apply_move(temp_board, row, side, self.player_piece)
+                _simulate_apply_move_and_get_coords(
+                    temp_board, row, side, self.player_piece
+                )
 
                 eval_score = self.minimax(
                     temp_board, depth - 1, alpha, beta, False
@@ -155,7 +162,9 @@ class MediumAIBot(BaseBot):
                 row, side = move
                 temp_board = [r[:] for r in board]  # Create a copy
                 # Simulate opponent's move
-                _simulate_apply_move(temp_board, row, side, self.opponent_piece)
+                _simulate_apply_move_and_get_coords(
+                    temp_board, row, side, self.opponent_piece
+                )
 
                 eval_score = self.minimax(
                     temp_board, depth - 1, alpha, beta, True
@@ -170,70 +179,70 @@ class MediumAIBot(BaseBot):
         valid_moves = self._get_all_valid_moves(board)
         if not valid_moves:
             return None
-
-        best_score = -math.inf
-        best_move = None  # random.choice(valid_moves) # Default to a random move
-
-        # Check for immediate win first (can be faster than full minimax for depth 0 win)
-        for move in valid_moves:
-            r, s = move
-            temp_b = [row[:] for row in board]
-            coords = _simulate_apply_move(temp_b, r, s, self.player_piece)
-            if coords and check_win(temp_b, self.player_piece, coords):
-                # print(f"MediumAI ({self.player_piece}): Found immediate winning move at {move}")
-                return move
-
-        # Check to block immediate opponent win
-        for move in valid_moves:  # AI's potential moves
-            r, s = move
-            # What spot would AI land on if it made this move?
-            ai_landing_spot_board = [row[:] for row in board]
-            sim_coords_ai_landing = _simulate_apply_move(
-                ai_landing_spot_board, r, s, "TEMP"
-            )  # Use temp piece
-
-            if sim_coords_ai_landing:
-                # Can opponent win by placing THEIR piece at sim_coords_ai_landing on ORIGINAL board?
-                opponent_win_check_board = [row[:] for row in board]
-                opponent_win_check_board[sim_coords_ai_landing[0]][
-                    sim_coords_ai_landing[1]
-                ] = self.opponent_piece
-                if check_win(
-                    opponent_win_check_board, self.opponent_piece, sim_coords_ai_landing
-                ):
-                    # print(f"MediumAI ({self.player_piece}): Blocking opponent win with move {move} at {sim_coords_ai_landing}")
-                    return move  # This AI move blocks opponent's win
-
-        # If no immediate win/loss, use Minimax for strategic move
-        alpha = -math.inf
-        beta = math.inf
-
-        # If only one valid move, take it (e.g. nearly full board)
         if len(valid_moves) == 1:
             return valid_moves[0]
 
-        for move in valid_moves:
-            row, side = move
-            temp_board = [r[:] for r in board]
-            _simulate_apply_move(
-                temp_board, row, side, self.player_piece
+        # 1. Check for AI's immediate winning move
+        for move_action in valid_moves:
+            r, s = move_action
+            temp_board_ai_win = [row[:] for row in board]
+            coords = _simulate_apply_move_and_get_coords(
+                temp_board_ai_win, r, s, self.player_piece
+            )
+            if coords and check_win(temp_board_ai_win, self.player_piece, coords):
+                # print(f"MediumAI ({self.player_piece}): Taking winning move {move_action}")
+                return move_action
+
+        # 2. Check to block opponent's immediate winning move
+        # For each spot the opponent could play to win, can AI play there first?
+        opponent_winning_moves_to_block = []
+        for opp_r in range(ROWS):  # Check all possible opponent moves
+            for opp_s in ["L", "R"]:
+                if is_valid_move(board, opp_r, opp_s):  # Can opponent play here?
+                    temp_board_opp_check = [row[:] for row in board]
+                    opp_coords = _simulate_apply_move_and_get_coords(
+                        temp_board_opp_check, opp_r, opp_s, self.opponent_piece
+                    )
+                    if opp_coords and check_win(
+                        temp_board_opp_check, self.opponent_piece, opp_coords
+                    ):
+                        # Opponent can win by playing at (opp_r, opp_s) which results in opp_coords
+                        # Can AI play at (opp_r, opp_s) and land on opp_coords?
+                        # This means AI needs to make the move (opp_r, opp_s)
+                        if (opp_r, opp_s) in valid_moves:
+                            # print(f"MediumAI ({self.player_piece}): Opponent can win with ({opp_r},{opp_s}). AI must block.")
+                            opponent_winning_moves_to_block.append((opp_r, opp_s))
+
+        if opponent_winning_moves_to_block:
+            # If multiple blocking moves, pick one (e.g., first found, or one evaluated best by heuristic)
+            # For Medium, just pick the first one found that's a valid AI move.
+            # print(f"MediumAI ({self.player_piece}): Blocking opponent's win with {opponent_winning_moves_to_block[0]}")
+            return opponent_winning_moves_to_block[0]
+
+        # 3. If no immediate win/loss, use Minimax
+        best_score = -math.inf
+        best_move = None
+        alpha = -math.inf
+        beta = math.inf
+
+        for move_action in valid_moves:
+            r, s = move_action
+            temp_board = [row[:] for row in board]
+            _simulate_apply_move_and_get_coords(
+                temp_board, r, s, self.player_piece
             )  # AI makes this move
 
-            # Opponent will play next, so it's minimizing player's turn from AI's perspective
-            eval_score = self.minimax(
+            score = self.minimax(
                 temp_board, self.search_depth - 1, alpha, beta, False
-            )
+            )  # Opponent plays next
 
-            if eval_score > best_score:
-                best_score = eval_score
-                best_move = move
-            # Basic alpha update for the root node's children
-            alpha = max(alpha, eval_score)
+            if score > best_score:
+                best_score = score
+                best_move = move_action
+            alpha = max(alpha, score)  # For root node, this is just tracking best score
 
-        # print(f"MediumAI ({self.player_piece}): Chose move {best_move} with score {best_score} from {len(valid_moves)} options.")
-        return (
-            best_move if best_move else random.choice(valid_moves)
-        )  # Fallback if all moves have terrible scores (shouldn't happen)
+        # print(f"MediumAI ({self.player_piece}): Chose {best_move} (score: {best_score}) via Minimax.")
+        return best_move if best_move else random.choice(valid_moves)
 
 
 if __name__ == "__main__":
