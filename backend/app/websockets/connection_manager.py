@@ -3,8 +3,11 @@ from fastapi import WebSocket
 from typing import List, Dict, Optional, Any
 import json
 
-# Ensure this import path is correct for your project structure
 from app.core import constants
+
+from app.core.logging_config import setup_logger
+
+logger = setup_logger(__name__)
 
 class ConnectionManager:
     def __init__(self):
@@ -23,7 +26,7 @@ class ConnectionManager:
         the old WebSocket is implicitly orphaned (should be disconnected first if possible).
         """
         if not game_id or not client_id:
-            print(
+            logger.error(
                 f"Error: game_id and client_id are required to connect. Game: '{game_id}', Client: '{client_id}'"
             )
             # Optionally, raise an error or send one back via websocket if it's already accepted
@@ -40,7 +43,7 @@ class ConnectionManager:
             and self.game_rooms[game_id][client_id] != websocket
         ):
             old_ws = self.game_rooms[game_id][client_id]
-            print(
+            logger.warning(
                 f"Warning: Client {client_id} in game {game_id} reconnected with a new WebSocket instance. Old instance {old_ws} is now orphaned in this mapping."
             )
             # Clean up old websocket from websocket_to_ids if it exists
@@ -50,7 +53,7 @@ class ConnectionManager:
         self.game_rooms[game_id][client_id] = websocket
         self.websocket_to_ids[websocket] = {"game_id": game_id, "client_id": client_id}
 
-        print(
+        logger.info(
             f"WebSocket for client {client_id} connected to game {game_id}. Total clients in room: {len(self.game_rooms[game_id])}"
         )
 
@@ -71,7 +74,7 @@ class ConnectionManager:
         effective_client_id = client_id or (ids.get("client_id") if ids else None)
 
         if not effective_game_id or not effective_client_id:
-            print(
+            logger.warning(
                 f"Warning: Could not determine game_id or client_id for websocket {websocket} during disconnect. Game: {effective_game_id}, Client: {effective_client_id}"
             )
             return
@@ -81,18 +84,18 @@ class ConnectionManager:
             # Ensure we are removing the exact websocket instance that was registered for this client_id
             if room[effective_client_id] == websocket:
                 del room[effective_client_id]
-                print(
+                logger.info(
                     f"WebSocket for client {effective_client_id} disconnected from game {effective_game_id}. Remaining: {len(room)}"
                 )
                 if not room:  # If room is empty, remove it
                     del self.game_rooms[effective_game_id]
-                    print(f"Game room {effective_game_id} removed as it's empty.")
+                    logger.info(f"Game room {effective_game_id} removed as it's empty.")
             else:
-                print(
+                logger.warning(
                     f"Warning: WebSocket instance mismatch for client {effective_client_id} in game {effective_game_id} during disconnect."
                 )
         else:
-            print(
+            logger.warning(
                 f"Warning: Client {effective_client_id} or game room {effective_game_id} not found during disconnect."
             )
 
@@ -104,7 +107,7 @@ class ConnectionManager:
         try:
             await websocket.send_text(json.dumps(message_payload))
         except Exception as e:
-            print(
+            logger.error(
                 f"Error sending personal message to {websocket}: {e}. Client might have disconnected."
             )
             # Attempt to clean up if the websocket is known
@@ -135,7 +138,7 @@ class ConnectionManager:
                     try:
                         await ws_conn.send_text(json.dumps(message_payload))
                     except Exception as e:
-                        print(
+                        logger.error(
                             f"Error sending broadcast message to client {cid} in game {game_id}: {e}"
                         )
                         disconnected_clients_to_remove.append(cid)  # Store client_id
@@ -146,7 +149,7 @@ class ConnectionManager:
                 if ws_to_disconnect:
                     self.disconnect(ws_to_disconnect, game_id, cid_to_remove)
         else:
-            print(
+            logger.warning(
                 f"Warning: No active room for game_id {game_id} to broadcast: {message_payload.get('type', 'Unknown type')}"
             )
 

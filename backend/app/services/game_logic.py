@@ -11,17 +11,21 @@ EMPTY_CELL: Optional[str] = None
 
 Board = List[List[Optional[str]]]
 
+from app.core.logging_config import setup_logger
+
+logger = setup_logger(__name__)
+
 def create_board() -> Board:
     """Creates a new empty game board."""
     return [[EMPTY_CELL for _ in range(COLS)] for _ in range(ROWS)]
 
 def print_board(board: Board):
     """Helper function to print the board to the console (for debugging)."""
-    print("\n  " + " ".join(str(i) for i in range(COLS))) 
+    logger.debug("\n  " + " ".join(str(i) for i in range(COLS)))
     for r_idx, row in enumerate(board):
         display_row = [cell if cell is not None else "_" for cell in row]
-        print(f"{r_idx} [" + " ".join(display_row) + "]")
-    print("-" * (COLS * 2 + 5))
+        logger.debug(f"{r_idx} [" + " ".join(display_row) + "]")
+    logger.debug("-" * (COLS * 2 + 5))
 
 def is_valid_move(board: Board, row_idx: int, side: str) -> bool:
     """
@@ -116,98 +120,112 @@ def check_draw(board: Board) -> bool:
 if __name__ == '__main__':
     # --- Existing Test Cases from Step 1.1 ---
     game_board = create_board()
-    print("Initial Board:")
+    logger.info("Initial Board:")
     print_board(game_board)
 
-    print(f"\nIs move (0, 'L') valid? {is_valid_move(game_board, 0, 'L')}") 
-    print(f"Is move (7, 'L') valid? {is_valid_move(game_board, 7, 'L')}") 
-    print(f"Is move (0, 'X') valid? {is_valid_move(game_board, 0, 'X')}") 
+    logger.info(f"\nIs move (0, 'L') valid? {is_valid_move(game_board, 0, 'L')}")
+    logger.info(f"Is move (7, 'L') valid? {is_valid_move(game_board, 7, 'L')}")
+    logger.info(f"Is move (0, 'X') valid? {is_valid_move(game_board, 0, 'X')}")
 
-    print("\nApplying move (1, 'L', PLAYER_X)")
+    logger.info("\nApplying move (1, 'L', PLAYER_X)")
     coords = apply_move(game_board, 1, "L", PLAYER_X)
-    print(f"Piece placed at: {coords}")
+    logger.info(f"Piece placed at: {coords}")
     print_board(game_board)
 
-    print("\nApplying move (1, 'R', PLAYER_O)")
+    logger.info("\nApplying move (1, 'R', PLAYER_O)")
     coords = apply_move(game_board, 1, "R", PLAYER_O)
-    print(f"Piece placed at: {coords}")
+    logger.info(f"Piece placed at: {coords}")
     print_board(game_board)
 
-    print("\nApplying move (1, 'L', PLAYER_X)") 
+    logger.info("\nApplying move (1, 'L', PLAYER_X)")
     coords = apply_move(game_board, 1, "L", PLAYER_X)
-    print(f"Piece placed at: {coords}")
+    logger.info(f"Piece placed at: {coords}")
     print_board(game_board)
-    
-    print("\nApplying move (1, 'L', PLAYER_O)") 
+
+    logger.info("\nApplying move (1, 'L', PLAYER_O)")
     coords = apply_move(game_board, 1, "L", PLAYER_O)
-    print(f"Piece placed at: {coords}")
+    logger.info(f"Piece placed at: {coords}")
     print_board(game_board)
 
     temp_board_fill = create_board()
     for i in range(COLS):
         apply_move(temp_board_fill, 3, "L", PLAYER_X if i % 2 == 0 else PLAYER_O)
-    print("\nBoard after filling row 3 (on temp_board_fill):")
+    logger.info("\nBoard after filling row 3 (on temp_board_fill):")
     print_board(temp_board_fill)
-    print(f"Is move (3, 'L') valid now? {is_valid_move(temp_board_fill, 3, 'L')}") 
-    print(f"Is move (3, 'R') valid now? {is_valid_move(temp_board_fill, 3, 'R')}")
+    logger.info(f"Is move (3, 'L') valid now? {is_valid_move(temp_board_fill, 3, 'L')}")
+    logger.info(f"Is move (3, 'R') valid now? {is_valid_move(temp_board_fill, 3, 'R')}")
 
-    print("\nTrying to apply move to full row (3, 'L', PLAYER_X) on temp_board_fill")
+    logger.info(
+        "\nTrying to apply move to full row (3, 'L', PLAYER_X) on temp_board_fill"
+    )
     coords = apply_move(temp_board_fill, 3, "L", PLAYER_X)
-    print(f"Piece placed at: {coords}") 
+    logger.info(f"Piece placed at: {coords}")
     print_board(temp_board_fill)
 
-    print("\nApplying move (6, 'R', PLAYER_O) to original game_board")
+    logger.info("\nApplying move (6, 'R', PLAYER_O) to original game_board")
     coords = apply_move(game_board, 6, "R", PLAYER_O)
-    print(f"Piece placed at: {coords}")
+    logger.info(f"Piece placed at: {coords}")
     print_board(game_board) # Print the original board being modified
 
     # --- New Test Cases for check_win and check_draw ---
-    print("\n--- Testing Win Conditions ---")
+    logger.info("\n--- Testing Win Conditions ---")
 
     # Horizontal Win
     h_win_board = create_board()
     for i in range(CONNECT_N):
         apply_move(h_win_board, 0, "L", PLAYER_X)
     print_board(h_win_board)
-    print(f"Player X wins horizontally? {check_win(h_win_board, PLAYER_X)}") # True
-    print(f"Player O wins horizontally? {check_win(h_win_board, PLAYER_O)}") # False
+    logger.info(
+        f"Player X wins horizontally? {check_win(h_win_board, PLAYER_X)}"
+    )  # True
+    logger.info(
+        f"Player O wins horizontally? {check_win(h_win_board, PLAYER_O)}"
+    )  # False
 
     # Vertical Win
     v_win_board = create_board()
     for i in range(CONNECT_N):
         apply_move(v_win_board, i, "L", PLAYER_O)
     print_board(v_win_board)
-    print(f"Player O wins vertically? {check_win(v_win_board, PLAYER_O)}") # True
-    print(f"Player X wins vertically? {check_win(v_win_board, PLAYER_X)}") # False
+    logger.info(f"Player O wins vertically? {check_win(v_win_board, PLAYER_O)}")  # True
+    logger.info(
+        f"Player X wins vertically? {check_win(v_win_board, PLAYER_X)}"
+    )  # False
 
     # Positive Diagonal Win (\)
     pd_win_board = create_board()
     for i in range(CONNECT_N):
         apply_move(pd_win_board, i, "L", PLAYER_X) # X at (0,0), (1,0), (2,0), (3,0) - need to adjust for diagonal
-    
+
     pd_win_board_actual = create_board() # Create a fresh board for this specific test
     for i in range(CONNECT_N):
         pd_win_board_actual[i][i] = PLAYER_X # (0,0), (1,1), (2,2), (3,3)
     print_board(pd_win_board_actual)
-    print(f"Player X wins pos-diag? {check_win(pd_win_board_actual, PLAYER_X)}") # True
+    logger.info(
+        f"Player X wins pos-diag? {check_win(pd_win_board_actual, PLAYER_X)}"
+    )  # True
 
     # Negative Diagonal Win (/)
     nd_win_board = create_board()
     for i in range(CONNECT_N):
         nd_win_board[CONNECT_N - 1 - i][i] = PLAYER_O # (3,0), (2,1), (1,2), (0,3) for CONNECT_N=4
     print_board(nd_win_board)
-    print(f"Player O wins neg-diag? {check_win(nd_win_board, PLAYER_O)}") # True
-    
+    logger.info(f"Player O wins neg-diag? {check_win(nd_win_board, PLAYER_O)}")  # True
+
     # No Win
     no_win_board = create_board()
     apply_move(no_win_board, 0, "L", PLAYER_X)
     apply_move(no_win_board, 1, "L", PLAYER_O)
     apply_move(no_win_board, 0, "L", PLAYER_X)
     print_board(no_win_board)
-    print(f"Player X wins (no win board)? {check_win(no_win_board, PLAYER_X)}") # False
-    print(f"Player O wins (no win board)? {check_win(no_win_board, PLAYER_O)}") # False
+    logger.info(
+        f"Player X wins (no win board)? {check_win(no_win_board, PLAYER_X)}"
+    )  # False
+    logger.info(
+        f"Player O wins (no win board)? {check_win(no_win_board, PLAYER_O)}"
+    )  # False
 
-    print("\n--- Testing Draw Condition ---")
+    logger.info("\n--- Testing Draw Condition ---")
     draw_board = create_board()
     # Fill the board without a winner (checkerboard pattern)
     for r in range(ROWS):
@@ -216,12 +234,12 @@ if __name__ == '__main__':
                 draw_board[r][c] = PLAYER_X
             else:
                 draw_board[r][c] = PLAYER_O
-    
+
     # Ensure no one actually won with this pattern (unlikely for connect 4 but good test for full board)
     # This pattern might accidentally create a win, so a better draw test is just a full board.
     # Let's make a specific non-winning full board for testing draw.
     # For simplicity, assume no win, just check if full.
-    
+
     full_board_no_win = create_board() # Create a fresh board
     for r_idx in range(ROWS):
         for c_idx in range(COLS):
@@ -231,15 +249,17 @@ if __name__ == '__main__':
     print_board(full_board_no_win)
     is_x_winner_on_full = check_win(full_board_no_win, PLAYER_X)
     is_o_winner_on_full = check_win(full_board_no_win, PLAYER_O)
-    print(f"Is X winner on full board? {is_x_winner_on_full}")
-    print(f"Is O winner on full board? {is_o_winner_on_full}")
-    
+    logger.info(f"Is X winner on full board? {is_x_winner_on_full}")
+    logger.info(f"Is O winner on full board? {is_o_winner_on_full}")
+
     # Only a draw if no one has won AND the board is full
     is_it_a_draw = check_draw(full_board_no_win) and not is_x_winner_on_full and not is_o_winner_on_full
-    print(f"Is it a draw (full board, assumed no win)? {check_draw(full_board_no_win)}") # True (if board is full)
-    print(f"Actual Draw condition (full and no winner): {is_it_a_draw}")
-    
+    logger.info(
+        f"Is it a draw (full board, assumed no win)? {check_draw(full_board_no_win)}"
+    )  # True (if board is full)
+    logger.info(f"Actual Draw condition (full and no winner): {is_it_a_draw}")
+
     not_draw_board = create_board()
     apply_move(not_draw_board, 0, "L", PLAYER_X)
     print_board(not_draw_board)
-    print(f"Is it a draw (not full board)? {check_draw(not_draw_board)}") # False
+    logger.info(f"Is it a draw (not full board)? {check_draw(not_draw_board)}")  # False

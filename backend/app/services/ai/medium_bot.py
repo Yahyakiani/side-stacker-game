@@ -17,6 +17,10 @@ from app.services.game_logic import (
     # or by always working on copies.
 )
 
+from app.core.logging_config import setup_logger
+
+logger = setup_logger(__name__)
+
 
 # Helper to simulate applying a move and getting resulting coordinates
 def _simulate_apply_move_and_get_coords(
@@ -268,22 +272,22 @@ if __name__ == "__main__":
     actual_apply_move(test_board, 2, "L", PLAYER_X)
     actual_apply_move(test_board, 2, "R", PLAYER_O)  # O plays on right
 
-    print("Board before MediumAI (X)'s turn:")
+    logger.info("Board before MediumAI (X)'s turn:")
     print_board(test_board)
 
     medium_bot_x = MediumAIBot(PLAYER_X, search_depth=2)  # X is AI
     # X needs one more X at (3,0) to win. (0,0) (1,0) (2,0) are X.
     # Or it needs to block O.
 
-    print(f"\nMediumAI ({PLAYER_X}) thinking...")
+    logger.info(f"\nMediumAI ({PLAYER_X}) thinking...")
     chosen_move = medium_bot_x.get_move(test_board)
-    print(f"MediumAI ({PLAYER_X}) suggests move: {chosen_move}")
+    logger.info(f"MediumAI ({PLAYER_X}) suggests move: {chosen_move}")
 
     if chosen_move:
         actual_apply_move(test_board, chosen_move[0], chosen_move[1], PLAYER_X)
         print_board(test_board)
         if check_win(test_board, PLAYER_X):
-            print("MediumAI X wins!")
+            logger.info("MediumAI X wins!")
 
     test_board_o_threat = create_board()
     actual_apply_move(test_board_o_threat, 0, "L", PLAYER_O)  # O
@@ -291,10 +295,10 @@ if __name__ == "__main__":
     actual_apply_move(test_board_o_threat, 0, "L", PLAYER_O)  # O
     actual_apply_move(test_board_o_threat, 1, "L", PLAYER_X)  # X
     actual_apply_move(test_board_o_threat, 2, "L", PLAYER_X)  # X
-    print("\nBoard where O threatens win, X (AI) to move:")
+    logger.info("\nBoard where O threatens win, X (AI) to move:")
     print_board(test_board_o_threat)
     medium_bot_x_block = MediumAIBot(PLAYER_X, search_depth=2)
     chosen_move_block = medium_bot_x_block.get_move(test_board_o_threat)
-    print(
+    logger.info(
         f"MediumAI ({PLAYER_X}) suggests move to block: {chosen_move_block}"
     )  # Should be (0,L) to block (0,3)

@@ -7,19 +7,13 @@ import uuid
 import asyncio
 
 from app.websockets.connection_manager import manager
-from app.db.session import (
-    get_db,
-    SessionLocal,
-)  # SessionLocal needed for run_ai_vs_ai_game if it stays here
+from app.db.session import get_db
 from app.crud import crud_game
 from app.services.game_logic import (
-    PLAYER_X,
-    PLAYER_O,  # These will be replaced by constants
     Board as GameLogicBoard,
     apply_move,
     check_draw,
     check_win,
-    # ... other game_logic imports (is_valid_move, apply_move etc. are used in MAKE_MOVE)
     create_board as service_create_board,
     is_valid_move,
 )
@@ -30,10 +24,11 @@ from app.core import constants
 from app.services.ava_game_manager import run_ai_vs_ai_game
 from app.services.pve_game_manager import _handle_pve_ai_turn
 
-router = APIRouter()
+from app.core.logging_config import setup_logger
 
-# --- run_ai_vs_ai_game function (as refactored above) would go here ---
-# OR move it to app.services.ava_game_manager.py and import it
+logger = setup_logger(__name__)
+
+router = APIRouter()
 
 
 # --- Handler for CREATE_GAME ---
@@ -241,7 +236,7 @@ async def handle_create_game_message(
         if db_game.game_mode.startswith(
             constants.DB_GAME_MODE_AVA_PREFIX
         ) and db_game.current_player_token.startswith(constants.AI_PLAYER_TOKEN_PREFIX):
-            print(
+            logger.info(
                 f"AvA Game {active_game_id_str}: Scheduling AI vs AI play. First turn: {db_game.current_player_token}"
             )
             asyncio.create_task(run_ai_vs_ai_game(db_game.id))
@@ -494,7 +489,7 @@ async def handle_join_game_message(
     p2_token_from_db = updated_db_game.player2_token  # This should be player2_temp_id
 
     if not p1_token_from_db or not p2_token_from_db:
-        print(
+        logger.critical(
             f"CRITICAL ERROR JOIN_GAME: Missing player tokens for GAME_START. P1: {p1_token_from_db}, P2: {p2_token_from_db}"
         )
         await manager.send_error(websocket, "Internal error preparing game start.")
@@ -531,12 +526,12 @@ async def handle_join_game_message(
             },
             ws_player1,
         )
-        print(
+        logger.info(
             f"Sent GAME_START to Player 1 ({p1_token_from_db}) in game {game_to_join_id_str}"
         )
     else:
         # This is a critical issue if P1 is supposed to be connected
-        print(
+        logger.warning(
             f"Warning/Error: Could not find WebSocket for Player 1 ({p1_token_from_db}) in game {game_to_join_id_str} to send GAME_START."
         )
         # Depending on your game logic, you might want to handle this more formally.
@@ -555,7 +550,7 @@ async def handle_join_game_message(
         },
         ws_player2,
     )
-    print(
+    logger.info(
         f"Sent GAME_START to Player 2 ({p2_token_from_db}) in game {game_to_join_id_str}"
     )
     # --- END OF CORRECTED SECTION ---
@@ -568,7 +563,7 @@ async def websocket_endpoint(
     websocket: WebSocket, client_id: str, db: Session = Depends(get_db)
 ):
     await websocket.accept()
-    print(f"WebSocket connection accepted for client_id: {client_id}")
+    logger.info(f"WebSocket connection accepted for client_id: {client_id}")
     current_active_game_id: str | None = None
 
     try:
@@ -579,7 +574,7 @@ async def websocket_endpoint(
                 message_type = message.get("type")
                 payload = message.get("payload", {})
                 # Log sparingly in production
-                print(
+                logger.info(
                     f"Msg from {client_id} in game {current_active_game_id or 'N/A'}: type={message_type}"
                 )
 
@@ -623,7 +618,7 @@ async def websocket_endpoint(
                     if result and result.get("invalidate_game_session"):
                         current_active_game_id = None  # Clear if session became invalid
                 else:
-                    print(
+                    logger.warning(
                         f"Unknown message type received from {client_id}: {message_type}"
                     )
                     await manager.send_error(
@@ -631,17 +626,17 @@ async def websocket_endpoint(
                     )
 
             except json.JSONDecodeError:
-                print(f"Invalid JSON received from {client_id}: {data}")
+                logger.warning(f"Invalid JSON received from {client_id}: {data}")
                 await manager.send_error(websocket, "Invalid JSON format.")
             except Exception as e:  # Catch exceptions within message processing loop
-                print(
+                logger.error(
                     f"Error processing message from {client_id} (type: {message.get('type', 'unknown')}): {e}"
                 )
                 # Add more detailed logging here, e.g., traceback.format_exc()
                 await manager.send_error(websocket, "Error processing your request.")
 
     except WebSocketDisconnect:
-        print(
+        logger.info(
             f"Client {client_id} disconnected from game {current_active_game_id or 'N/A'}."
         )
         if current_active_game_id:
@@ -652,7 +647,7 @@ async def websocket_endpoint(
             # if game and game.status == constants.GAME_STATUS_ACTIVE:
             #    pass # Handle disconnect logic
     except Exception as e:  # Catch exceptions in the main WebSocket loop
-        print(f"Unhandled exception in WebSocket endpoint for {client_id}: {e}")
+        logger.error(f"Unhandled exception in WebSocket endpoint for {client_id}: {e}")
         # Attempt to close gracefully if possible
         try:
             await websocket.close(code=1011)  # Internal server error
@@ -663,7 +658,7 @@ async def websocket_endpoint(
         if current_active_game_id and websocket in manager.active_connections.get(
             current_active_game_id, []
         ):
-            print(
+            logger.info(
                 f"Ensuring cleanup for {client_id} from game {current_active_game_id} in finally block."
             )
             manager.disconnect(websocket, current_active_game_id)

@@ -14,6 +14,10 @@ from app.services.game_logic import (  # Import necessary functions from game_lo
     EMPTY_CELL,
 )
 
+from app.core.logging_config import setup_logger
+
+logger = setup_logger(__name__)
+
 
 class EasyAIBot(BaseBot):
     def __init__(self, player_piece: str):
@@ -70,12 +74,14 @@ if __name__ == "__main__":
     board1[0][1] = PLAYER_O
     board1[0][2] = PLAYER_O
     # board1[0][3] is empty - O can win here
-    print("Scenario 1: O can win at (0,3) via (0,L)")
+    logger.info("Scenario 1: O can win at (0,3) via (0,L)")
     print_board(board1)
 
     easy_bot_x = EasyAIBot(PLAYER_X)  # X needs to block
     move_x = easy_bot_x.get_move(board1)
-    print(f"EasyBot X suggests move: {move_x}")  # Should be (0, "L") to place at (0,3)
+    logger.info(
+        f"EasyBot X suggests move: {move_x}"
+    )  # Should be (0, "L") to place at (0,3)
 
     # Test winning move for self
     board2 = create_board()
@@ -83,14 +89,14 @@ if __name__ == "__main__":
     board2[1][1] = PLAYER_X
     board2[1][2] = PLAYER_X
     # board2[1][3] is empty - X can win here
-    print("\nScenario 2: X can win at (1,3) via (1,L)")
+    logger.info("Scenario 2: X can win at (1,3) via (1,L)")
     print_board(board2)
     move_x2 = easy_bot_x.get_move(board2)
-    print(f"EasyBot X suggests move: {move_x2}")  # Should be (1, "L")
+    logger.info(f"EasyBot X suggests move: {move_x2}")  # Should be (1, "L")
 
     # Test random move
     board3 = create_board()
-    print("\nScenario 3: Random move")
+    logger.info("\nScenario 3: Random move")
     print_board(board3)
     move_x3 = easy_bot_x.get_move(board3)
-    print(f"EasyBot X suggests random move: {move_x3}")  # Should be a valid move
+    logger.info(f"EasyBot X suggests random move: {move_x3}")  # Should be a valid move

@@ -12,9 +12,6 @@ from app.db.session import SessionLocal  # For creating a new session
 from app.crud import crud_game
 from app.websockets.connection_manager import manager
 from app.services.game_logic import (
-    PLAYER_X,
-    PLAYER_O,
-    EMPTY_CELL,
     Board as GameLogicBoard,
     apply_move,
     check_win,
@@ -26,6 +23,9 @@ from app.services.ai.medium_bot import MediumAIBot
 from app.services.ai.hard_bot import HardAIBot
 from app.core import constants  # Import our new constants
 
+from app.core.logging_config import setup_logger
+
+logger = setup_logger(__name__)
 
 # Helper function to instantiate AI bot
 def _get_ai_bot_instance(ai_player_token: str, ai_player_piece: str):
@@ -49,7 +49,7 @@ def _get_ai_bot_instance(ai_player_token: str, ai_player_piece: str):
             player_piece=ai_player_piece, search_depth=3
         )  # Search depth could be a constant or config
 
-    print(f"ERROR AvA: Could not determine AI type for token {ai_player_token}")
+    logger.error(f"ERROR AvA: Could not determine AI type for token {ai_player_token}")
     return None
 
 
@@ -91,7 +91,7 @@ async def run_ai_vs_ai_game(game_id_uuid: uuid.UUID):  # Removed initial_db_sess
     """
     db: Session = SessionLocal()
     active_game_id_str = str(game_id_uuid)
-    print(f"AI vs AI Game Loop Started for: {active_game_id_str}")
+    logger.info(f"AI vs AI Game Loop Started for: {active_game_id_str}")
 
     try:
         while True:
@@ -108,7 +108,7 @@ async def run_ai_vs_ai_game(game_id_uuid: uuid.UUID):  # Removed initial_db_sess
                 status_info = (
                     current_game_state.status if current_game_state else "Not Found"
                 )
-                print(
+                logger.info(
                     f"AvA Game {active_game_id_str}: Loop ending. Status: {status_info}"
                 )
                 break
@@ -137,7 +137,7 @@ async def run_ai_vs_ai_game(game_id_uuid: uuid.UUID):  # Removed initial_db_sess
                 )
                 break
 
-            print(
+            logger.info(
                 f"AvA Game {active_game_id_str}: AI Turn for {ai_player_token} ({ai_player_piece}) thinking..."
             )
             current_board: GameLogicBoard = current_game_state.board_state.get(
@@ -152,7 +152,7 @@ async def run_ai_vs_ai_game(game_id_uuid: uuid.UUID):  # Removed initial_db_sess
             )  # Assuming get_move is pure or operates on a copy
 
             if not ai_move_tuple:
-                print(f"AvA ERROR: AI {ai_player_token} could not find a move.")
+                logger.error(f"AvA ERROR: AI {ai_player_token} could not find a move.")
                 is_board_full = not any(
                     constants.EMPTY_CELL in row for row in current_board
                 )
@@ -176,7 +176,7 @@ async def run_ai_vs_ai_game(game_id_uuid: uuid.UUID):  # Removed initial_db_sess
                 break
 
             ai_row, ai_side = ai_move_tuple
-            print(
+            logger.info(
                 f"AvA Game {active_game_id_str}: AI {ai_player_token} chose r{ai_row},s{ai_side}"
             )
 
@@ -191,7 +191,7 @@ async def run_ai_vs_ai_game(game_id_uuid: uuid.UUID):  # Removed initial_db_sess
             )
 
             if not ai_placed_coords:
-                print(
+                logger.critical(
                     f"AvA CRITICAL ERROR: AI {ai_player_token} made an invalid board move: {ai_move_tuple}. This should not happen."
                 )
                 await _handle_ava_game_over(
@@ -273,17 +273,19 @@ async def run_ai_vs_ai_game(game_id_uuid: uuid.UUID):  # Removed initial_db_sess
                     active_game_id_str,
                 )
 
-        print(f"AI vs AI Game Loop Gracefully Ended for: {active_game_id_str}")
+        logger.info(f"AI vs AI Game Loop Gracefully Ended for: {active_game_id_str}")
 
     except WebSocketDisconnect:  # Should not happen in a detached task usually
-        print(
+        logger.error(
             f"AvA Game {active_game_id_str}: WebSocketDisconnect encountered unexpectedly."
         )
     except asyncio.CancelledError:
-        print(f"AvA Game {active_game_id_str}: Task was cancelled.")
+        logger.info(f"AvA Game {active_game_id_str}: Task was cancelled.")
         # Perform any cleanup if necessary
     except Exception as e:
-        print(f"CRITICAL EXCEPTION in run_ai_vs_ai_game for {active_game_id_str}: {e}")
+        logger.critical(
+            f"CRITICAL EXCEPTION in run_ai_vs_ai_game for {active_game_id_str}: {e}"
+        )
         # Attempt to notify spectators of a critical failure
         try:
             critical_error_board = (
@@ -303,11 +305,11 @@ async def run_ai_vs_ai_game(game_id_uuid: uuid.UUID):  # Removed initial_db_sess
                 None,
             )
         except Exception as broadcast_err:
-            print(
+            logger.error(
                 f"AvA Game {active_game_id_str}: Failed to broadcast critical error: {broadcast_err}"
             )
     finally:
-        print(
+        logger.info(
             f"AvA Game {active_game_id_str}: Closing DB session in run_ai_vs_ai_game."
         )
         db.close()

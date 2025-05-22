@@ -3,13 +3,13 @@ from typing import Optional, Dict, Any, List
 import uuid
 from sqlalchemy.orm.attributes import flag_modified
 from app.db.models import Game  # Game SQLAlchemy model
-from app.schemas.game import (
-    GameStateResponse,
-)  # For type hinting return, though not strictly required here
 from app.services.game_logic import (
     create_board as service_create_board,
 )  # Renaming to avoid conflict
 
+from app.core.logging_config import setup_logger
+
+logger = setup_logger(__name__)
 
 def get_game(db: Session, game_id: uuid.UUID) -> Optional[Game]:
     """
@@ -20,14 +20,14 @@ def get_game(db: Session, game_id: uuid.UUID) -> Optional[Game]:
         # Expire the instance. The next access to its attributes
         # will trigger a reload from the database, reflecting changes
         # committed by other sessions.
-        print(
+        logger.debug(
             f"DEBUG crud get_game: Found game {game_id} in session {id(db)}. Expiring it."
         )
         db.expire(game)
         # No need to explicitly refresh here; access in calling code will do it.
         # For example, when game.status is checked in game_ws.py, it will reload.
     else:
-        print(
+        logger.debug(
             f"DEBUG crud get_game: Game {game_id} not found by db.get() in session {id(db)}. Will try query."
         )
         # If db.get() didn't find it (e.g., not in identity map yet), a query will fetch it.

@@ -15,6 +15,9 @@ from app.services.game_logic import (
     CONNECT_N,
 )
 
+from app.core.logging_config import setup_logger
+
+logger = setup_logger(__name__)
 
 # Use the same helper as MediumBot or define it here
 def _simulate_apply_move_and_get_coords(
@@ -250,13 +253,13 @@ if __name__ == "__main__":
     actual_apply_move(test_board, 0, "L", PLAYER_X)  # X (0,2)
     # X is at (0,0), (0,1), (0,2). Needs (0,3) for win.
 
-    print("Board before HardAI (O)'s turn to block X:")
+    logger.info("Board before HardAI (O)'s turn to block X:")
     print_board(test_board)
 
     hard_bot_o = HardAIBot(PLAYER_O, search_depth=3)  # O is AI, depth 3
-    print(f"\nHardAI ({PLAYER_O}) thinking...")
+    logger.info(f"\nHardAI ({PLAYER_O}) thinking...")
     chosen_move_o = hard_bot_o.get_move(test_board)
-    print(
+    logger.info(
         f"HardAI ({PLAYER_O}) suggests move: {chosen_move_o}"
     )  # Should be (0,"L") to block X at (0,3)
 
@@ -269,9 +272,11 @@ if __name__ == "__main__":
     actual_apply_move(test_board_x_win, 0, "L", PLAYER_X)
     actual_apply_move(test_board_x_win, 0, "L", PLAYER_X)
     # X can win at (0,3) with (0,L)
-    print("\nBoard before HardAI (X)'s turn to win:")
+    logger.info("\nBoard before HardAI (X)'s turn to win:")
     print_board(test_board_x_win)
     hard_bot_x = HardAIBot(PLAYER_X, search_depth=3)
-    print(f"\nHardAI ({PLAYER_X}) thinking...")
+    logger.info(f"\nHardAI ({PLAYER_X}) thinking...")
     chosen_move_x = hard_bot_x.get_move(test_board_x_win)
-    print(f"HardAI ({PLAYER_X}) suggests move: {chosen_move_x}")  # Should be (0,"L")
+    logger.info(
+        f"HardAI ({PLAYER_X}) suggests move: {chosen_move_x}"
+    )  # Should be (0,"L")

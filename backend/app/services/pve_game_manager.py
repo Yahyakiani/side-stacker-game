@@ -1,14 +1,10 @@
 # backend/app/services/pve_game_manager.py (NEW FILE for PvE AI logic)
 import asyncio
 from sqlalchemy.orm import Session
-import uuid  # If game_id is uuid
 
 from app.crud import crud_game
 from app.websockets.connection_manager import manager  # For broadcasting
 from app.services.game_logic import (
-    PLAYER_X,
-    PLAYER_O,
-    EMPTY_CELL,
     Board as GameLogicBoard,
     apply_move,
     check_win,
@@ -21,6 +17,10 @@ from app.services.ai.hard_bot import HardAIBot
 from app.core import constants
 from app.db.models import Game  # For type hinting db_game
 
+from app.core.logging_config import setup_logger
+
+logger = setup_logger(__name__)
+
 
 def _get_pve_ai_bot_instance(game_mode: str, ai_player_piece: str):
     """Instantiates an AI bot for PVE based on game_mode and piece."""
@@ -31,7 +31,7 @@ def _get_pve_ai_bot_instance(game_mode: str, ai_player_piece: str):
         return MediumAIBot(player_piece=ai_player_piece, search_depth=2)
     elif constants.AI_DIFFICULTY_HARD in game_mode_upper:
         return HardAIBot(player_piece=ai_player_piece, search_depth=4)  # Example depth
-    print(f"ERROR PVE: Could not determine AI type for game_mode {game_mode}")
+    logger.error(f"ERROR PVE: Could not determine AI type for game_mode {game_mode}")
     return None
 
 
@@ -43,7 +43,7 @@ async def _handle_pve_ai_turn(db: Session, db_game: Game, active_game_id: str):
     ai_bot_instance = _get_pve_ai_bot_instance(db_game.game_mode, ai_player_piece)
 
     if not ai_bot_instance:
-        print(f"ERROR: PVE AI bot for mode {db_game.game_mode} not implemented.")
+        logger.error(f"ERROR: PVE AI bot for mode {db_game.game_mode} not implemented.")
         error_message = f"{constants.AI_UNAVAILABLE_ERROR_PREFIX}{db_game.game_mode}{constants.AI_UNAVAILABLE_ERROR_SUFFIX}"
         await manager.broadcast_error_to_game(active_game_id, error_message)
         # Revert turn to human if AI is unavailable to prevent stall
@@ -56,7 +56,7 @@ async def _handle_pve_ai_turn(db: Session, db_game: Game, active_game_id: str):
             # Notify client about turn revert (optional, or let next human move trigger update)
         return
 
-    print(f"PVE AI ({ai_player_piece}, {db_game.game_mode}) is thinking...")
+    logger.info(f"PVE AI ({ai_player_piece}, {db_game.game_mode}) is thinking...")
     # Add a small delay to simulate thinking and improve UX
     await asyncio.sleep(
         0.5
@@ -71,7 +71,9 @@ async def _handle_pve_ai_turn(db: Session, db_game: Game, active_game_id: str):
     ai_move_tuple = ai_bot_instance.get_move(current_board)
 
     if not ai_move_tuple:
-        print(f"PVE AI ({ai_player_piece}) found no valid moves. Board full or error.")
+        logger.warning(
+            f"PVE AI ({ai_player_piece}) found no valid moves. Board full or error."
+        )
         # If AI can't move, it's likely a draw or an issue. For now, revert to human.
         # A more robust solution might end the game as a draw if the board is indeed full.
         crud_game.update_game_state(
@@ -86,13 +88,13 @@ async def _handle_pve_ai_turn(db: Session, db_game: Game, active_game_id: str):
         return
 
     ai_row, ai_side = ai_move_tuple
-    print(f"PVE AI ({ai_player_piece}) chose: r{ai_row}, s{ai_side}")
+    logger.info(f"PVE AI ({ai_player_piece}) chose: r{ai_row}, s{ai_side}")
 
     board_after_ai_move = [row[:] for row in current_board]  # Work on a copy
     ai_placed_coords = apply_move(board_after_ai_move, ai_row, ai_side, ai_player_piece)
 
     if not ai_placed_coords:
-        print(
+        logger.critical(
             f"CRITICAL ERROR PVE: AI ({ai_player_piece}) made an invalid board move: {ai_move_tuple}"
         )
         await manager.broadcast_error_to_game(
