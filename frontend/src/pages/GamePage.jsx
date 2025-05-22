@@ -1,10 +1,11 @@
 // frontend/src/pages/GamePage.jsx
 import React, { useState, useEffect, useCallback } from 'react'
-import { VStack, Heading, Text, Spinner, useToast, Button, Container } from '@chakra-ui/react'
+import { VStack, Heading, Text, Spinner, useToast, Button, Container, IconButton, Input, HStack } from '@chakra-ui/react'
 import GameSetup from '../components/GameSetup'
 import Board from '../components/board/Board' // Uncomment
 import Controls from '../components/Controls'   // Import Controls
 import GameInfo from '../components/GameInfo' // Will add later 
+import { FaCopy } from 'react-icons/fa'
 import { connectWebSocket, getClientId, getSocket, makeMove as sendMakeMoveWebSocket } from '../services/socketService'
 
 
@@ -119,9 +120,9 @@ const GamePage = () => {
         console.log("GamePage: Received general WS message:", message)
         switch (message.type) {
             //   case "GAME_CREATED": // Handled by specific callback now
-            //   case "GAME_JOINED":  // Handled by specific callback now
-            //       // handleGameCreatedOrJoined(message.payload, message.type) // Not needed if specific callback used
-            //       break
+            case "GAME_JOINED":  // Handled by specific callback now
+                // handleGameCreatedOrJoined(message.payload, message.type) // Not needed if specific callback used
+                break
             case "GAME_START":
                 handleGameStart(message.payload)
                 break
@@ -131,17 +132,19 @@ const GamePage = () => {
             case "GAME_OVER":
                 handleGameOver(message.payload)
                 break
-            case "WAITING_FOR_PLAYER":
-                toast({ title: "Waiting for opponent...", status: "info", duration: null, isClosable: true, id: "waiting-toast" })
-                setGameState(prevState => ({ ...prevState, status: 'waiting' }))
-                break
             case "ERROR": // General server error for this client
                 handleWebSocketError(message.payload.message || "Unknown server error message.")
+                break
+            case "WAITING_FOR_PLAYER":
+                console.log("WAITING_FOR_PLAYER message received:", message);
+                toast.close("waiting-toast")
+                toast({ id: "waiting-toast", title: "Waiting for opponent...", description: `Share Game ID: ${message.payload.game_id}`, status: "info", duration: null, isClosable: true })
+                setGameState(prevState => ({ ...prevState, status: 'waiting' }))
                 break
             default:
                 console.warn("GamePage: Unhandled WebSocket message type:", message.type)
         }
-    }, [handleGameStart, handleGameUpdate, handleGameOver, handleWebSocketError])
+    }, [handleGameStart, handleGameUpdate, handleGameOver, handleWebSocketError, toast])
 
 
 
@@ -192,6 +195,42 @@ const GamePage = () => {
     const isMyTurn = gameData && gameState.current_player_token === gameData.player_token
     const controlsDisabled = !isMyTurn || gameState.status !== 'active' || isLoading
 
+
+    if (gameData && (gameState.status === 'waiting' || gameState.status === 'waiting_for_player2')) {
+        return (
+            <Container maxW="container.md" py={10} textAlign="center">
+                <VStack spacing={6}>
+                    <Heading as="h2" size="lg" color="teal.500">Waiting for Opponent...</Heading>
+                    <Text fontSize="lg">Share this Game ID with your friend:</Text>
+                    <HStack justifyContent="center">
+                        <Input
+                            value={gameData.game_id || "Loading ID..."} // Show loading if ID not yet in gameData
+                            isReadOnly
+                            pr="4.5rem"
+                            textAlign="center"
+                            fontSize="xl"
+                            fontFamily="monospace"
+                            w="auto" // Adjust width as needed
+                            minW="300px"
+                        />
+                        <IconButton
+                            aria-label="Copy Game ID"
+                            icon={<FaCopy />}
+                            colorScheme="teal"
+                            onClick={() => {
+                                if (gameData.game_id) {
+                                    navigator.clipboard.writeText(gameData.game_id);
+                                    toast({ title: "Game ID Copied!", status: "success", duration: 2000, isClosable: true });
+                                }
+                            }}
+                            isDisabled={!gameData.game_id}
+                        />
+                    </HStack>
+                    <Spinner label="Waiting for P2..." thickness="4px" speed="0.65s" color="teal.500" size="lg" mt={4} />
+                </VStack>
+            </Container>
+        );
+    }
     if (!socketConnected && !error) {
         return (
             <Container centerContent py={{ base: "20vh", md: "30vh" }}>
@@ -229,6 +268,7 @@ const GamePage = () => {
         return (
             <Container centerContent py={10}>
                 <GameSetup
+                    isLoading={isLoading}
                     setIsLoading={setIsLoading}
                     setError={setError}
                 />

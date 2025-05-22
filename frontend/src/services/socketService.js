@@ -21,14 +21,12 @@ export const getClientId = () => clientId;
 
 export const connectWebSocket = (
     generalMessageCb,
-    gameCreatedCb, // Specifically for GAME_CREATED from GamePage
-    // gameJoinedCb, // If you want a separate one for GAME_JOINED
+    gameCreatedOrJoinedCb, // Specifically for GAME_CREATED and GAME_JOINED
     errorCb
 ) => {
     // Always update callbacks to the latest ones from the calling component
     onMessageCallback = generalMessageCb;
-    onGameCreatedCallback = gameCreatedCb;
-    // onGameJoinedCallback = gameJoinedCb;
+    onGameCreatedCallback = gameCreatedOrJoinedCb;
     onErrorCallback = errorCb;
 
     if (socket && socket.readyState === WebSocket.OPEN) {
@@ -54,18 +52,20 @@ export const connectWebSocket = (
         try {
           const message = JSON.parse(event.data);
 
-          if (onMessageCallback) { // General handler in GamePage
-              onMessageCallback(message);
-          }
+            // Specific callback handling (can be redundant if general handler covers it, but explicit)
+            if ((message.type === "GAME_CREATED" || message.type === "GAME_JOINED") && onGameCreatedCallback) {
+                onGameCreatedCallback(message.payload, message.type); // Pass type if needed by callback
+            }
 
-          // Specific callback handling (can be redundant if general handler covers it, but explicit)
-          if (message.type === "GAME_CREATED" && onGameCreatedCallback) {
-            onGameCreatedCallback(message.payload); // This is handleGameCreatedOrJoined in GamePage
-        }
+            // Then, general handler in GamePage (can still process these messages if needed, or skip)
+            if (onMessageCallback) {
+                onMessageCallback(message);
+            }
 
-        else if (message.type === "ERROR" && onErrorCallback) {
+            // Error callback (can be redundant if general handler also handles ERROR type)
+            if (message.type === "ERROR" && onErrorCallback && !onMessageCallback) { // Only if general handler isn't also handling it
             onErrorCallback(message.payload.message || 'Unknown server error');
-        }
+          }
       } catch (error) {
           console.error('Error parsing WebSocket message or in callback:', error);
           if (onErrorCallback) onErrorCallback('Failed to process message from server.');
@@ -153,6 +153,22 @@ export const makeMove = (gameId, playerToken, row, side) => {
     }
     sendMessage({ type: "MAKE_MOVE", payload })
 }
+
+
+export const joinGame = (gameIdToJoin) => {
+    if (!gameIdToJoin) {
+        console.error("joinGame: gameIdToJoin is required.");
+        if (onErrorCallback) onErrorCallback("Game ID is required to join.");
+        return;
+    }
+    const payload = {
+        player_temp_id: getClientId(), // This client's ID, will become player2_token
+        game_id: gameIdToJoin,
+    };
+    sendMessage({ type: "JOIN_GAME", payload });
+};
+
+
 // No disconnect function exposed directly for now, relies on browser closing or server.
 // Could add one if manual disconnect from UI is needed.
 // export const disconnectWebSocket = () => {

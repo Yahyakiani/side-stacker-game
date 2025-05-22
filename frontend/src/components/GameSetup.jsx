@@ -1,104 +1,129 @@
 // frontend/src/components/GameSetup.jsx
-import React, { useState } from 'react'
-import { Box, Button, VStack, Heading, RadioGroup, Radio, Stack, Select, Text } from '@chakra-ui/react'
-import { createGame } from '../services/socketService' // Import the function
+import React, { useState } from 'react';
+import {
+    Box, Button, VStack, Heading, RadioGroup, Radio, Stack, Select, Text,
+    Input,
+    useToast, // <<< ADD useToast for feedback
+    FormControl, FormLabel, // <<< ADD FormControl, FormLabel
+    Tabs, TabList, Tab, TabPanels, TabPanel // <<< ADD Tabs
+} from '@chakra-ui/react';
+import { createGame, joinGame } from '../services/socketService'; // <<< ADD joinGame
 
-const GameSetup = ({ setIsLoading, setError }) => { // onGameCreated is no longer passed directly
-    const [gameMode, setGameMode] = useState('PVP')              // PVP, PVE, AVA
-    const [selectedAiDifficulty, setSelectedAiDifficulty] = useState('EASY')
-    const [ai1Difficulty, setAi1Difficulty] = useState('EASY')
-    const [ai2Difficulty, setAi2Difficulty] = useState('EASY')
+const GameSetup = ({ setIsLoading, setError, isLoading }) => {
+    const [tabIndex, setTabIndex] = useState(0); // 0 for Create, 1 for Join
 
+    // Create Game State
+    const [createGameMode, setCreateGameMode] = useState('PVP');
+    const [pveAiDifficulty, setPveAiDifficulty] = useState('EASY');
+    const [avaAi1Difficulty, setAvaAi1Difficulty] = useState('EASY');
+    const [avaAi2Difficulty, setAvaAi2Difficulty] = useState('EASY');
+
+    // Join Game State
+    const [joinGameId, setJoinGameId] = useState('');
+    const toast = useToast();
 
     const handleCreateGame = async () => {
         setError(null);
         setIsLoading(true);
 
-        let optionsForSocket = {}; // This will be the second argument to createGame
-
-        if (gameMode === 'PVE') {
-            optionsForSocket = selectedAiDifficulty; // Pass the difficulty string directly
-        } else if (gameMode === 'AVA') {
-            optionsForSocket = {
-                ai1_difficulty: ai1Difficulty,
-                ai2_difficulty: ai2Difficulty
+        let optionsForSocket = {};
+        if (createGameMode === 'PVE') {
+            optionsForSocket = pveAiDifficulty;
+        } else if (createGameMode === 'AVA') {
+            optionsForSocket = { 
+                ai1_difficulty: avaAi1Difficulty,
+                ai2_difficulty: avaAi2Difficulty
             };
         }
-        // For PVP, optionsForSocket remains {}
+        console.log(`Attempting to create game: Mode=${createGameMode}, Options=${JSON.stringify(optionsForSocket)}`);
+        createGame(createGameMode, optionsForSocket);
+        // Loading/error state is handled by GamePage based on WebSocket responses
+    };
 
-        console.log(`Attempting to create game via WebSocket: Mode=${gameMode}, Options=${JSON.stringify(optionsForSocket)}`);
-
-        try {
-            createGame(gameMode, optionsForSocket);
-        } catch (e) {
-            console.error("Error initiating game creation:", e);
-            setError("Failed to send game creation request.");
-            setIsLoading(false);
+    const handleJoinGame = async () => {
+        if (!joinGameId.trim()) {
+            toast({ title: "Game ID required", description: "Please enter a Game ID to join.", status: "warning", duration: 3000, isClosable: true });
+            return;
         }
-    }
-
+        setError(null);
+        setIsLoading(true);
+        console.log(`Attempting to join game: ID=${joinGameId}`);
+        joinGame(joinGameId.trim());
+        // Loading/error state is handled by GamePage based on WebSocket responses
+    };
 
     return (
         <Box p={5} shadow="md" borderWidth="1px" borderRadius="md" maxW="400px" mx="auto" mt="10vh">
+            <Tabs index={tabIndex} onChange={(index) => setTabIndex(index)} variant="soft-rounded" colorScheme="teal">
+                <TabList mb={4} justifyContent="center">
+                    <Tab>Create Game</Tab>
+                    <Tab>Join Game (PvP)</Tab>
+                </TabList>
+                <TabPanels>
+                    <TabPanel p={0}> {/* Create Game Panel */}
             <VStack spacing={6}>
-                <Heading as="h2" size="lg">
-                    Create New Game
-                </Heading>
+                            <Heading as="h2" size="lg" textAlign="center">Create New Game</Heading>
+                            <RadioGroup onChange={setCreateGameMode} value={createGameMode}>
+                                <Stack direction="column" spacing={3}>
+                                    <Radio value="PVP">Player vs Player</Radio>
+                                    <Radio value="PVE">Player vs AI</Radio>
+                                    <Radio value="AVA">AI vs AI (Spectate)</Radio>
+                                </Stack>
+                            </RadioGroup>
 
-                <RadioGroup onChange={setGameMode} value={gameMode}>
-                    <Stack direction="column" spacing={3}>
-                        <Radio value="PVP">Player vs Player</Radio>
-                        <Radio value="PVE">Player vs AI</Radio>
-                        <Radio value="AVA">AI vs AI (Spectate)</Radio>
-                    </Stack>
-                </RadioGroup>
-                {gameMode === 'AVA' && (
-                    <VStack spacing={4} align="stretch" w="100%">
-                        <VStack spacing={1} align="stretch">
-                            <Text fontSize="sm" color="gray.600">AI 1 (Plays as X):</Text>
-                            <Select value={ai1Difficulty} onChange={e => setAi1Difficulty(e.target.value)}>
-                                <option value="EASY">Easy</option>
-                                <option value="MEDIUM">Medium</option>
-                                <option value="HARD">Hard</option>
-                            </Select>
-                        </VStack>
-                        <VStack spacing={1} align="stretch">
-                            <Text fontSize="sm" color="gray.600">AI 2 (Plays as O):</Text>
-                            <Select value={ai2Difficulty} onChange={e => setAi2Difficulty(e.target.value)}>
-                                <option value="EASY">Easy</option>
-                                <option value="MEDIUM">Medium</option>
-                                <option value="HARD">Hard</option>
-                            </Select>
-                        </VStack>
-                    </VStack>
-                )}
-                {gameMode === 'PVE' && (
-                    <VStack spacing={3} align="stretch" w="100%">
-                        <Text fontSize="sm" color="gray.600">Select AI Difficulty:</Text>
-                        <Select
-                            value={selectedAiDifficulty} // This was aiDifficulty before, ensure state name matches
-                            onChange={(e) => setSelectedAiDifficulty(e.target.value)} // Ensure state name matches
-                        >
-                            <option value="EASY">Easy</option>
-                            <option value="MEDIUM">Medium</option>
-                            <option value="HARD">Hard</option>
-                        </Select>
-                    </VStack>
-                )}
+                            {createGameMode === 'PVE' && ( /* ... PVE Difficulty Select ... */
+                                <VStack spacing={3} align="stretch" w="100%">
+                                    <Text fontSize="sm" color="gray.600">Select AI Difficulty:</Text>
+                                    <Select value={pveAiDifficulty} onChange={(e) => setPveAiDifficulty(e.target.value)}>
+                                        <option value="EASY">Easy</option>
+                                        <option value="MEDIUM">Medium</option>
+                                        <option value="HARD">Hard</option>
+                                    </Select>
+                                </VStack>
+                            )}
+                            {createGameMode === 'AVA' && ( /* ... AVA Difficulty Selects ... */
+                                <VStack spacing={4} align="stretch" w="100%">
+                                    <VStack spacing={1} align="stretch">
+                                        <Text fontSize="sm" color="gray.600">AI 1 (Plays as X):</Text>
+                                        <Select value={avaAi1Difficulty} onChange={(e) => setAvaAi1Difficulty(e.target.value)}>
+                                            <option value="EASY">Easy</option><option value="MEDIUM">Medium</option><option value="HARD">Hard</option>
+                                        </Select>
+                                    </VStack>
+                                    <VStack spacing={1} align="stretch">
+                                        <Text fontSize="sm" color="gray.600">AI 2 (Plays as O):</Text>
+                                        <Select value={avaAi2Difficulty} onChange={(e) => setAvaAi2Difficulty(e.target.value)}>
+                                            <option value="EASY">Easy</option><option value="MEDIUM">Medium</option><option value="HARD">Hard</option>
+                                        </Select>
+                                    </VStack>
+                                </VStack>
+                            )}
 
-
-
-                <Button
-                    colorScheme="teal"
-                    onClick={handleCreateGame}
-                    isLoading={false} // Loading state will be managed by GamePage
-                    width="full"
-                >
-                    Create Game
-                </Button>
+                            <Button colorScheme="teal" onClick={handleCreateGame} isLoading={isLoading && tabIndex === 0} width={"100%"} >
+                                Create Game
+                            </Button>
             </VStack>
+                    </TabPanel>
+                    <TabPanel p={0}> {/* Join Game Panel */}
+                        <VStack spacing={6}>
+                            <Heading as="h2" size="lg" textAlign="center">Join PvP Game</Heading>
+                            <FormControl isRequired>
+                                <FormLabel htmlFor="join-game-id">Game ID</FormLabel>
+                                <Input
+                                    id="join-game-id"
+                                    placeholder="Enter Game ID from Player 1"
+                                    value={joinGameId}
+                                    onChange={(e) => setJoinGameId(e.target.value)}
+                                />
+                            </FormControl>
+                            <Button colorScheme="blue" onClick={handleJoinGame} isLoading={isLoading && tabIndex === 1} width={"100%"} >
+                                Join Game
+                            </Button>
+                        </VStack>
+                    </TabPanel>
+                </TabPanels>
+            </Tabs>
         </Box>
-    )
-}
+    );
+};
 
-export default GameSetup
+export default GameSetup;

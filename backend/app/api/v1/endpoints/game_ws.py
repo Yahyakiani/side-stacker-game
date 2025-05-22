@@ -415,6 +415,19 @@ async def websocket_endpoint(
                         },
                         websocket,
                     )
+                    if db_game.game_mode == "PVP":
+                        # Explicitly send WAITING_FOR_PLAYER to the creator of a PVP game
+                        await manager.send_personal_message(
+                            {
+                                "type": "WAITING_FOR_PLAYER",
+                                "payload": {
+                                    "game_id": active_game_id,
+                                    "message": "Waiting for another player to join. Share the Game ID.",
+                                    # You can add any other relevant info for the waiting player here
+                                },
+                            },
+                            websocket,
+                        )
 
                     if db_game.game_mode.startswith(
                         "PVE"
@@ -595,6 +608,7 @@ async def websocket_endpoint(
                                 "player_token": player2_temp_id,  # Your (P2) token
                                 "player_piece": PLAYER_O,  # P2 is O by default
                                 "opponent_token": db_game.player1_token,
+                                "game_mode": db_game.game_mode,
                                 "message": f"Successfully joined game. You are Player 2 ({PLAYER_O}).",
                             },
                         },
