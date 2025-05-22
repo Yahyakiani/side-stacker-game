@@ -1,178 +1,230 @@
 // frontend/src/services/socketService.js
 
-let socket = null
-let onMessageCallback = null // To allow components to register a message handler
-let onGameCreatedCallback = null // Specific callback for game creation
-let onErrorCallback = null // Specific callback for errors
-let onGameJoinedCallback = null;  // For GAME_JOINED (if we want a separate one)
+// --- Constants ---
+const DEFAULT_WS_BASE_URL = 'ws://localhost:8000/api/v1/ws-game/ws';
+const VITE_WS_BASE_URL = import.meta.env.VITE_WS_BASE_URL || DEFAULT_WS_BASE_URL;
 
-const VITE_WS_BASE_URL = import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:8000/api/v1/ws-game/ws'
+// Message Types (Consider moving to a shared constants file if used elsewhere)
+const MESSAGE_TYPES = {
+    GAME_CREATED: "GAME_CREATED",
+    GAME_JOINED: "GAME_JOINED",
+    CREATE_GAME: "CREATE_GAME",
+    JOIN_GAME: "JOIN_GAME",
+    MAKE_MOVE: "MAKE_MOVE",
+    ERROR: "ERROR",
+    // Add other message types as needed (e.g., GAME_START, GAME_UPDATE) if this service
+    // needs to be aware of them for specific logic, though generally the consuming hook
+    // (useGameWebSocket) handles parsing most incoming types.
+};
 
+// --- Module-level State ---
+let socketInstance = null; // Renamed for clarity to distinguish from a local 'socket' variable
+let onGeneralMessage = null;
+let onGameSetupSuccess = null; // Renamed for better semantic meaning (handles GAME_CREATED & GAME_JOINED)
+let onConnectionError = null;
+
+// --- Client ID Generation and Management ---
 const generateClientId = () => {
     // Simple UUID v4 generator
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
-        const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8)
-        return v.toString(16)
-    })
-}
+    // Ref: https://stackoverflow.com/a/2117523/123456
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = (Math.random() * 16) | 0;
+        const v = c === 'x' ? r : (r & 0x3) | 0x8;
+        return v.toString(16);
+    });
+};
 
-const clientId = generateClientId() // Generate a unique ID for this client session
-export const getClientId = () => clientId;
+// Generate a unique ID for this client session only once per module load.
+const currentClientId = generateClientId();
+export const getClientId = () => currentClientId;
 
+// --- WebSocket Connection Management ---
 export const connectWebSocket = (
-    generalMessageCb,
-    gameCreatedOrJoinedCb, // Specifically for GAME_CREATED and GAME_JOINED
-    errorCb
+    generalMessageCallback,
+    gameSetupSuccessCallback, // For GAME_CREATED and GAME_JOINED success
+    connectionErrorCallback
 ) => {
-    // Always update callbacks to the latest ones from the calling component
-    onMessageCallback = generalMessageCb;
-    onGameCreatedCallback = gameCreatedOrJoinedCb;
-    onErrorCallback = errorCb;
+    // Update registered callbacks to the latest ones from the calling component (e.g., useGameWebSocket hook)
+    onGeneralMessage = generalMessageCallback;
+    onGameSetupSuccess = gameSetupSuccessCallback;
+    onConnectionError = connectionErrorCallback;
 
-    if (socket && socket.readyState === WebSocket.OPEN) {
-        console.log('WebSocket already connected. Callbacks updated.');
-        return socket;
+    if (socketInstance && socketInstance.readyState === WebSocket.OPEN) {
+        console.log('socketService: WebSocket already connected. Callbacks updated.');
+        return socketInstance;
     }
-    if (socket && socket.readyState === WebSocket.CONNECTING) {
-        console.log('WebSocket is currently connecting. Callbacks updated.');
-        return socket;
+    if (socketInstance && socketInstance.readyState === WebSocket.CONNECTING) {
+        console.log('socketService: WebSocket is currently connecting. Callbacks updated.');
+        return socketInstance;
     }
 
-    const wsUrl = `${VITE_WS_BASE_URL}/${getClientId()}`; // Use getClientId()
-    console.log('Attempting to connect WebSocket to:', wsUrl);
-    socket = new WebSocket(wsUrl);
+    const wsUrl = `${VITE_WS_BASE_URL}/${getClientId()}`;
+    console.log('socketService: Attempting to connect WebSocket to:', wsUrl);
+    socketInstance = new WebSocket(wsUrl);
 
-    socket.onopen = () => {
-        console.log('WebSocket connected successfully!');
-        if (typeof setSocketConnected === 'function') setSocketConnected(true); // If GamePage passes this
+    socketInstance.onopen = () => {
+        console.log('socketService: WebSocket connected successfully!');
+    // The `setSocketConnected` function call was specific to an older GamePage implementation.
+    // The `useGameWebSocket` hook now manages its own `socketConnected` state based on `getSocket()`.
     };
 
-    socket.onmessage = (event) => {
-        console.log('WebSocket message received:', event.data);
+    socketInstance.onmessage = (event) => {
+        console.log('socketService: WebSocket message received:', event.data);
         try {
-          const message = JSON.parse(event.data);
+            const message = JSON.parse(event.data);
 
-            // Specific callback handling (can be redundant if general handler covers it, but explicit)
-            if ((message.type === "GAME_CREATED" || message.type === "GAME_JOINED") && onGameCreatedCallback) {
-                onGameCreatedCallback(message.payload, message.type); // Pass type if needed by callback
+            // Prioritize specific handlers if they exist
+            if (
+                (message.type === MESSAGE_TYPES.GAME_CREATED || message.type === MESSAGE_TYPES.GAME_JOINED) &&
+                onGameSetupSuccess
+            ) {
+                onGameSetupSuccess(message.payload, message.type); // Pass type for context
             }
 
-            // Then, general handler in GamePage (can still process these messages if needed, or skip)
-            if (onMessageCallback) {
-                onMessageCallback(message);
+            // Always call the general message handler if provided.
+            // The general handler (in useGameWebSocket) can decide to ignore messages
+            // already handled by specific callbacks if necessary.
+            if (onGeneralMessage) {
+                onGeneralMessage(message);
             }
 
-            // Error callback (can be redundant if general handler also handles ERROR type)
-            if (message.type === "ERROR" && onErrorCallback && !onMessageCallback) { // Only if general handler isn't also handling it
-            onErrorCallback(message.payload.message || 'Unknown server error');
-          }
-      } catch (error) {
-          console.error('Error parsing WebSocket message or in callback:', error);
-          if (onErrorCallback) onErrorCallback('Failed to process message from server.');
-      }
+            // Specific handling for top-level ERROR messages directly from the server,
+            // if not intended to be routed through the general message handler first.
+            // This is somewhat redundant if the general handler in useGameWebSocket also processes "ERROR".
+            // If onGeneralMessage handles "ERROR", this block might be removed or conditioned.
+            if (message.type === MESSAGE_TYPES.ERROR && onConnectionError && !onGeneralMessage) {
+                // Only if onGeneralMessage isn't defined, otherwise let it handle ERROR.
+                onConnectionError(message.payload?.message || 'Unknown server error');
+            }
+
+        } catch (error) {
+            console.error('socketService: Error parsing WebSocket message or in callback:', error);
+            if (onConnectionError) {
+                onConnectionError('Failed to process message from server.');
+            }
+        }
     };
 
-    socket.onerror = (error) => {
-        console.error('WebSocket error:', error)
-        if (onErrorCallback) {
-            onErrorCallback('WebSocket connection error.')
+    socketInstance.onerror = (errorEvent) => {
+        // The 'error' event object itself might not be very descriptive.
+        // It's often followed by an 'onclose' event with more details.
+        console.error('socketService: WebSocket error occurred.', errorEvent);
+        if (onConnectionError) {
+            onConnectionError('WebSocket connection error. See console for details.');
         }
-        // Potentially try to reconnect here or notify user
-    }
+        // Note: Reconnection logic could be initiated here if desired.
+    };
 
-    socket.onclose = (event) => {
-        console.log('WebSocket disconnected:', event.reason, `Code: ${event.code}`)
-        socket = null // Clear the socket instance
-        if (onErrorCallback) {
-            onErrorCallback(`WebSocket disconnected: ${event.reason || 'Connection closed'}`)
+    socketInstance.onclose = (event) => {
+        console.log(`socketService: WebSocket disconnected. Reason: ${event.reason || 'N/A'}, Code: ${event.code}`);
+        socketInstance = null; // Important to clear the instance for future reconnections
+        if (onConnectionError) {
+            onConnectionError(`WebSocket disconnected: ${event.reason || 'Connection closed'}`);
         }
-        // Potentially try to reconnect here or notify user
-    }
-    return socket
-}
+        // Note: Reconnection logic could be initiated here if desired.
+    };
 
-export const sendMessage = (message) => {
-    if (socket && socket.readyState === WebSocket.OPEN) {
-        console.log('Sending WebSocket message:', message)
-        socket.send(JSON.stringify(message))
+    return socketInstance;
+};
+
+// --- Sending Messages ---
+export const sendMessage = (messageObject) => {
+    if (socketInstance && socketInstance.readyState === WebSocket.OPEN) {
+        console.log('socketService: Sending WebSocket message:', messageObject);
+        socketInstance.send(JSON.stringify(messageObject));
     } else {
-        console.error('WebSocket is not connected. Cannot send message.')
-        if (onErrorCallback) {
-            onErrorCallback('Cannot send message: WebSocket not connected.')
+        const errorMsg = 'socketService: WebSocket is not connected. Cannot send message.';
+        console.error(errorMsg, messageObject);
+        if (onConnectionError) { // Notify about the failure to send
+            onConnectionError('Cannot send message: WebSocket not connected.');
         }
+        // Optionally, throw an error here or return a status
+        // throw new Error(errorMsg);
     }
-}
+};
+
+// --- Game Action Senders ---
+// These functions create and send specific message types.
 
 export const createGame = (mode = 'PVP', options = {}) => {
-    // mode: "PVP", "PVE", "AVA"
-    // options: for PVE -> "EASY" (string for difficulty)
-    //          for AVA -> { ai1_difficulty: "EASY", ai2_difficulty: "MEDIUM" } (object)
-    //          for PVP -> {} (empty object or undefined)
-
+    const upperCaseMode = mode.toUpperCase();
     const payload = {
-        player_temp_id: clientId,
-        mode: mode.toUpperCase(),
+        player_temp_id: getClientId(), // Use the module-level generated client ID
+        mode: upperCaseMode,
     };
 
-    if (mode.toUpperCase() === 'PVE') {
-        if (typeof options === 'string') { // options is the difficulty string
+    if (upperCaseMode === 'PVE') {
+        if (typeof options === 'string' && options.trim() !== '') {
             payload.difficulty = options.toUpperCase();
         } else {
-            console.error("PVE mode selected but difficulty string not provided correctly in options.");
-            // Handle error or default
-            payload.difficulty = "EASY"; // Default if incorrect
-    }
-    } else if (mode.toUpperCase() === 'AVA') {
+            console.warn("socketService: PVE mode - 'options' should be a non-empty difficulty string. Defaulting to EASY.");
+            payload.difficulty = "EASY";
+        }
+    } else if (upperCaseMode === 'AVA') {
         if (typeof options === 'object' && options !== null) {
             if (options.ai1_difficulty) payload.ai1_difficulty = options.ai1_difficulty.toUpperCase();
+            else {
+                console.warn("socketService: AVA mode - 'ai1_difficulty' missing in options. Defaulting to EASY.");
+                payload.ai1_difficulty = "EASY";
+            }
             if (options.ai2_difficulty) payload.ai2_difficulty = options.ai2_difficulty.toUpperCase();
+            else {
+                console.warn("socketService: AVA mode - 'ai2_difficulty' missing in options. Defaulting to EASY.");
+                payload.ai2_difficulty = "EASY";
+            }
         } else {
-            console.error("AVA mode selected but AI difficulties object not provided correctly in options.");
-            // Handle error or default
+            console.warn("socketService: AVA mode - 'options' object for AI difficulties not provided correctly. Defaulting AI difficulties to EASY.");
             payload.ai1_difficulty = "EASY";
             payload.ai2_difficulty = "EASY";
         }
     }
+    // No specific options needed for PVP from the frontend in this structure.
 
-    sendMessage({ type: "CREATE_GAME", payload });
+    sendMessage({ type: MESSAGE_TYPES.CREATE_GAME, payload });
 };
 
-export const getSocket = () => socket // To allow components to check socket state if needed
+export const joinGame = (gameIdToJoin) => {
+    if (!gameIdToJoin || String(gameIdToJoin).trim() === '') { // More robust check
+        const errorMsg = "socketService: gameIdToJoin is required and cannot be empty for joinGame.";
+        console.error(errorMsg);
+        if (onConnectionError) onConnectionError("Game ID is required to join."); // Or a more specific error type
+        return; // Prevent sending malformed message
+    }
+    const payload = {
+        player_temp_id: getClientId(),
+        game_id: String(gameIdToJoin).trim(), // Ensure it's a string and trimmed
+    };
+    sendMessage({ type: MESSAGE_TYPES.JOIN_GAME, payload });
+};
 
 export const makeMove = (gameId, playerToken, row, side) => {
     if (!gameId || !playerToken) {
-        console.error("makeMove: gameId and playerToken are required.")
-        // Optionally call onErrorCallback if it's set
+        console.error("socketService: gameId and playerToken are required for makeMove.");
+        // Optionally call onConnectionError or throw, depending on desired error handling strategy
         return;
     }
+    if (row === undefined || side === undefined || String(side).trim() === '') {
+        console.error("socketService: row and side are required for makeMove.");
+        return;
+    }
+
     const payload = {
-        game_id: gameId, // Though game_id is implicit in the server's room management, sending it is fine
+        game_id: gameId,
         player_token: playerToken,
         row: parseInt(row, 10), // Ensure row is an integer
-        side: side.toUpperCase()
-    }
-    sendMessage({ type: "MAKE_MOVE", payload })
-}
-
-
-export const joinGame = (gameIdToJoin) => {
-    if (!gameIdToJoin) {
-        console.error("joinGame: gameIdToJoin is required.");
-        if (onErrorCallback) onErrorCallback("Game ID is required to join.");
-        return;
-    }
-    const payload = {
-        player_temp_id: getClientId(), // This client's ID, will become player2_token
-        game_id: gameIdToJoin,
+        side: String(side).toUpperCase().trim(),
     };
-    sendMessage({ type: "JOIN_GAME", payload });
+    sendMessage({ type: MESSAGE_TYPES.MAKE_MOVE, payload });
 };
 
+// --- Utility ---
+export const getSocket = () => socketInstance; // To allow components/hooks to check socket state
 
-// No disconnect function exposed directly for now, relies on browser closing or server.
-// Could add one if manual disconnect from UI is needed.
+// --- Manual Disconnect (Optional) ---
 // export const disconnectWebSocket = () => {
-//   if (socket) {
-//     socket.close()
+//   if (socketInstance && socketInstance.readyState === WebSocket.OPEN) {
+//     console.log('socketService: Manually closing WebSocket connection.');
+//     socketInstance.close(1000, "Client initiated disconnect"); // 1000 is normal closure
 //   }
-// }
+//   socketInstance = null; // Ensure it's cleared
+// };
