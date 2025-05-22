@@ -1,67 +1,234 @@
 # backend/app/websockets/connection_manager.py
 from fastapi import WebSocket
-from typing import List, Dict, Optional
-import json  # For sending structured messages
+from typing import List, Dict, Optional, Any
+import json
 
+# Ensure this import path is correct for your project structure
+from app.core import constants
 
 class ConnectionManager:
     def __init__(self):
-        # Stores active connections per game_id
-        # Example: {"game_uuid_1": [WebSocket1, WebSocket2], "game_uuid_2": [WebSocket3]}
-        self.active_connections: Dict[str, List[WebSocket]] = {}
+        # Stores active connections: game_id -> {client_id: WebSocket}
+        self.game_rooms: Dict[str, Dict[str, WebSocket]] = {}
+        # Optional: A reverse mapping to quickly find game_id and client_id from a WebSocket object
+        # This is useful for disconnect logic if client_id/game_id isn't passed.
+        self.websocket_to_ids: Dict[WebSocket, Dict[str, str]] = (
+            {}
+        )  # {websocket: {"game_id": ..., "client_id": ...}}
 
-    async def connect(self, websocket: WebSocket, game_id: str):
-        # await websocket.accept()
-        if game_id not in self.active_connections:
-            self.active_connections[game_id] = []
-        self.active_connections[game_id].append(websocket)
+    async def connect(self, websocket: WebSocket, game_id: str, client_id: str):
+        """
+        Connects a WebSocket to a game room, associating it with a client_id.
+        If the client_id already exists in the room with a different WebSocket,
+        the old WebSocket is implicitly orphaned (should be disconnected first if possible).
+        """
+        if not game_id or not client_id:
+            print(
+                f"Error: game_id and client_id are required to connect. Game: '{game_id}', Client: '{client_id}'"
+            )
+            # Optionally, raise an error or send one back via websocket if it's already accepted
+            return
+
+        if game_id not in self.game_rooms:
+            self.game_rooms[game_id] = {}
+
+        # If this client was already connected with a *different* websocket instance,
+        # this new connection will overwrite the old one for this client_id in this room.
+        # The old websocket, if still active, would need to be disconnected separately.
+        if (
+            client_id in self.game_rooms[game_id]
+            and self.game_rooms[game_id][client_id] != websocket
+        ):
+            old_ws = self.game_rooms[game_id][client_id]
+            print(
+                f"Warning: Client {client_id} in game {game_id} reconnected with a new WebSocket instance. Old instance {old_ws} is now orphaned in this mapping."
+            )
+            # Clean up old websocket from websocket_to_ids if it exists
+            if old_ws in self.websocket_to_ids:
+                del self.websocket_to_ids[old_ws]
+
+        self.game_rooms[game_id][client_id] = websocket
+        self.websocket_to_ids[websocket] = {"game_id": game_id, "client_id": client_id}
+
         print(
-            f"WebSocket connected for game {game_id}. Total in room: {len(self.active_connections[game_id])}"
+            f"WebSocket for client {client_id} connected to game {game_id}. Total clients in room: {len(self.game_rooms[game_id])}"
         )
 
-    def disconnect(self, websocket: WebSocket, game_id: str):
-        if game_id in self.active_connections:
-            if websocket in self.active_connections[game_id]:
-                self.active_connections[game_id].remove(websocket)
-                print(
-                    f"WebSocket disconnected for game {game_id}. Remaining in room: {len(self.active_connections[game_id])}"
-                )
-                if not self.active_connections[game_id]:  # If room is empty, remove it
-                    del self.active_connections[game_id]
-                    print(f"Game room {game_id} removed as it's empty.")
-        else:
-            print(f"Warning: WebSocket for game {game_id} not found during disconnect.")
-
-    async def send_personal_message(self, message: dict, websocket: WebSocket):
-        """Sends a JSON message to a specific websocket connection."""
-        await websocket.send_text(json.dumps(message))
-
-    async def broadcast_to_game(
-        self, message: dict, game_id: str, exclude_websocket: Optional[WebSocket] = None
+    def disconnect(
+        self,
+        websocket: WebSocket,
+        game_id: Optional[str] = None,
+        client_id: Optional[str] = None,
     ):
-        """Broadcasts a JSON message to all clients in a specific game room, optionally excluding one."""
-        if game_id in self.active_connections:
-            # print(f"Broadcasting to game {game_id}: {message}")
-            disconnected_clients = []
-            for connection in self.active_connections[game_id]:
-                if connection != exclude_websocket:
-                    try:
-                        await connection.send_text(json.dumps(message))
-                    except (
-                        Exception
-                    ) as e:  # Catch potential errors if client disconnected abruptly
-                        print(
-                            f"Error sending message to a websocket in game {game_id}: {e}"
-                        )
-                        disconnected_clients.append(connection)
+        """
+        Disconnects a WebSocket. If game_id and client_id are not provided,
+        it attempts to find them using the websocket_to_ids mapping.
+        """
+        ids = self.websocket_to_ids.get(websocket)
 
-            # Clean up any clients that errored out during broadcast
-            for client in disconnected_clients:
-                self.disconnect(client, game_id)
+        # Use provided ids or try to find them from the mapping
+        effective_game_id = game_id or (ids.get("game_id") if ids else None)
+        effective_client_id = client_id or (ids.get("client_id") if ids else None)
+
+        if not effective_game_id or not effective_client_id:
+            print(
+                f"Warning: Could not determine game_id or client_id for websocket {websocket} during disconnect. Game: {effective_game_id}, Client: {effective_client_id}"
+            )
+            return
+
+        room = self.game_rooms.get(effective_game_id)
+        if room and effective_client_id in room:
+            # Ensure we are removing the exact websocket instance that was registered for this client_id
+            if room[effective_client_id] == websocket:
+                del room[effective_client_id]
+                print(
+                    f"WebSocket for client {effective_client_id} disconnected from game {effective_game_id}. Remaining: {len(room)}"
+                )
+                if not room:  # If room is empty, remove it
+                    del self.game_rooms[effective_game_id]
+                    print(f"Game room {effective_game_id} removed as it's empty.")
+            else:
+                print(
+                    f"Warning: WebSocket instance mismatch for client {effective_client_id} in game {effective_game_id} during disconnect."
+                )
         else:
             print(
-                f"Warning: No active connections found for game_id {game_id} to broadcast message: {message}"
+                f"Warning: Client {effective_client_id} or game room {effective_game_id} not found during disconnect."
             )
+
+        if websocket in self.websocket_to_ids:
+            del self.websocket_to_ids[websocket]
+
+    async def send_personal_message(self, message_payload: dict, websocket: WebSocket):
+        """Sends a JSON message to a specific websocket connection."""
+        try:
+            await websocket.send_text(json.dumps(message_payload))
+        except Exception as e:
+            print(
+                f"Error sending personal message to {websocket}: {e}. Client might have disconnected."
+            )
+            # Attempt to clean up if the websocket is known
+            self.disconnect(websocket)  # Will use websocket_to_ids to find context
+
+    async def send_error(self, websocket: WebSocket, error_message: str):
+        """Sends a structured ERROR message to a specific websocket."""
+        await self.send_personal_message(
+            {
+                "type": constants.WS_MSG_TYPE_ERROR,
+                "payload": {"message": error_message},
+            },
+            websocket,
+        )
+
+    async def broadcast_to_game(
+        self,
+        message_payload: dict,
+        game_id: str,
+        exclude_client_id: Optional[str] = None,  # Changed from exclude_websocket
+    ):
+        """Broadcasts a JSON message to all clients in a specific game room, optionally excluding one by client_id."""
+        room = self.game_rooms.get(game_id)
+        if room:
+            disconnected_clients_to_remove = []  # Store client_ids to remove
+            for cid, ws_conn in room.items():  # Iterate over client_id, websocket pairs
+                if cid != exclude_client_id:
+                    try:
+                        await ws_conn.send_text(json.dumps(message_payload))
+                    except Exception as e:
+                        print(
+                            f"Error sending broadcast message to client {cid} in game {game_id}: {e}"
+                        )
+                        disconnected_clients_to_remove.append(cid)  # Store client_id
+
+            for cid_to_remove in disconnected_clients_to_remove:
+                # Retrieve websocket again for disconnect, or ensure disconnect can take client_id
+                ws_to_disconnect = room.get(cid_to_remove)  # Get the ws instance
+                if ws_to_disconnect:
+                    self.disconnect(ws_to_disconnect, game_id, cid_to_remove)
+        else:
+            print(
+                f"Warning: No active room for game_id {game_id} to broadcast: {message_payload.get('type', 'Unknown type')}"
+            )
+
+    async def broadcast_error_to_game(
+        self,
+        game_id: str,
+        error_message: str,
+        exclude_client_id: Optional[str] = None,
+    ):
+        await self.broadcast_to_game(
+            {
+                "type": constants.WS_MSG_TYPE_ERROR,
+                "payload": {"message": error_message},
+            },
+            game_id,
+            exclude_client_id=exclude_client_id,
+        )
+
+    async def broadcast_game_update(
+        self,
+        game_id: str,
+        board: List[List[Optional[str]]],
+        current_player_token: str,
+        last_move: Optional[Dict[str, Any]],
+        exclude_client_id: Optional[str] = None,
+    ):
+        payload = {
+            "game_id": game_id,
+            "board": board,
+            "current_player_token": current_player_token,
+            "last_move": last_move,
+        }
+        await self.broadcast_to_game(
+            {"type": constants.WS_MSG_TYPE_GAME_UPDATE, "payload": payload},
+            game_id,
+            exclude_client_id=exclude_client_id,
+        )
+
+    async def broadcast_game_over(
+        self,
+        game_id: str,
+        board: List[List[Optional[str]]],
+        status: str,
+        winner_token: Optional[str],
+        winning_player_piece: Optional[str],
+        exclude_client_id: Optional[str] = None,
+    ):
+        payload = {
+            "game_id": game_id,
+            "board": board,
+            "status": status,
+            "winner_token": winner_token,
+            "winning_player_piece": winning_player_piece,
+        }
+        await self.broadcast_to_game(
+            {"type": constants.WS_MSG_TYPE_GAME_OVER, "payload": payload},
+            game_id,
+            exclude_client_id=exclude_client_id,
+        )
+
+    def get_websocket_for_client(
+        self, game_id: str, client_id: str
+    ) -> Optional[WebSocket]:
+        """Retrieves the WebSocket for a specific client_id in a game_id."""
+        room = self.game_rooms.get(game_id)
+        if room:
+            return room.get(client_id)
+        return None
+
+    def get_all_websockets_in_game(self, game_id: str) -> List[WebSocket]:
+        """Returns a list of all WebSockets in a given game room."""
+        room = self.game_rooms.get(game_id)
+        if room:
+            return list(room.values())
+        return []
+
+    def get_client_ids_in_game(self, game_id: str) -> List[str]:
+        """Returns a list of all client_ids in a given game room."""
+        room = self.game_rooms.get(game_id)
+        if room:
+            return list(room.keys())
+        return []
 
 
 # Singleton instance of the manager
