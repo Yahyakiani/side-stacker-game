@@ -1,7 +1,7 @@
       
 # Side-Stacker Game
 
-![Side-Stacker Gameplay](./assets/screenshot-pvp-inprogress.png)
+![Side-Stacker Gameplay](./assets/pvp-1.jpg)
 
 
 ## Table of Contents
@@ -19,6 +19,7 @@
   - [How to Play](#how-to-play)
   - [Game Modes](#game-modes)
   - [Screenshots](#screenshots)
+  - [Architectural Notes \& Refinements](#architectural-notes--refinements)
   - [Future Enhancements](#future-enhancements)
   - [Known Issues / Limitations](#known-issues--limitations)
 
@@ -81,45 +82,55 @@ This project implements real-time multiplayer gameplay using WebSockets, AI oppo
 
     
 
-IGNORE_WHEN_COPYING_START
-Use code with caution. Markdown
-IGNORE_WHEN_COPYING_END
-
+```text
 side-stacker-game/
-├── assets/ # Screenshots and other static assets for README
-├── backend/ # FastAPI backend application
-│ ├── app/ # Core application logic
-│ │ ├── api/ # API endpoints (HTTP and WebSocket)
-│ │ ├── core/ # Configuration
-│ │ ├── crud/ # Database CRUD operations
-│ │ ├── db/ # Database models, session, migrations (Alembic)
-│ │ ├── schemas/ # Pydantic schemas
-│ │ └── services/ # Business logic (game_logic, AI bots)
-│ ├── tests/ # Backend unit tests
-│ ├── alembic.ini # Alembic configuration
-│ ├── Dockerfile # Dockerfile for backend
-│ ├── pyproject.toml # Project metadata, Black config
-│ └── requirements.txt # Python dependencies
-├── frontend/ # React frontend application
-│ ├── public/ # Static assets for frontend
-│ ├── src/ # Frontend source code
-│ │ ├── assets/ # Frontend-specific assets (images, etc.)
-│ │ ├── components/ # Reusable React components
-│ │ ├── contexts/ # React Context for state (if used)
-│ │ ├── hooks/ # Custom React hooks (if used)
-│ │ ├── pages/ # Page-level components
-│ │ ├── services/ # API/WebSocket service logic
-│ │ └── styles/ # Global styles, theme overrides
-│ ├── .env.development # Environment variables for frontend dev
-│ ├── .prettierrc.js # Prettier configuration
-│ ├── Dockerfile # Dockerfile for frontend
-│ ├── index.html # Main HTML file
-│ ├── package.json # NPM dependencies and scripts
-│ └── vite.config.js # Vite configuration
+├── assets/                  # Screenshots and other static assets for README
+├── backend/                 # FastAPI backend application
+│   ├── app/                 # Core application logic
+│   │   ├── api/             # API endpoints
+│   │   │   └── v1/
+│   │   │       └── endpoints/   # WebSocket (game_ws.py) and HTTP endpoints
+│   │   ├── core/            # Configuration (config.py) and shared Constants (constants.py)
+│   │   ├── crud/            # Database CRUD operations (crud_game.py)
+│   │   ├── db/              # Database models, session, migrations (Alembic)
+│   │   ├── schemas/         # Pydantic schemas for data validation & serialization
+│   │   ├── services/        # Business logic
+│   │   │   ├── ai/              # AI bot implementations (base_bot.py, easy_bot.py, etc.)
+│   │   │   ├── ava_game_manager.py  # Logic for AI vs AI game loop
+│   │   │   ├── game_logic.py       # Core game rules (moves, win/draw checks)
+│   │   │   └── pve_game_manager.py # Logic for Player vs AI turns
+│   │   └── websockets/      # WebSocket connection management (connection_manager.py)
+│   ├── tests/               # Backend unit/integration tests
+│   ├── alembic.ini
+│   ├── Dockerfile
+│   ├── pyproject.toml
+│   └── requirements.txt
+├── frontend/                # React frontend application
+│   ├── public/              # Static assets served directly
+│   ├── src/                 # Frontend source code
+│   │   ├── assets/              # Images, fonts, etc. used by components
+│   │   ├── components/          # Reusable UI components (Board, Controls, GameInfo, GameSetup)
+│   │   │   ├── board/              # Board-specific components
+│   │   │   └── views/              # Components representing distinct UI states/views of GamePage
+│   │   ├── constants/           # Shared frontend constants (gameConstants.js)
+│   │   ├── hooks/               # Custom React Hooks (useGameStateManager, useGameWebSocket)
+│   │   ├── pages/               # Top-level page components (GamePage.jsx)
+│   │   ├── services/            # API/WebSocket service layer (socketService.js)
+│   │   ├── App.jsx
+│   │   ├── main.jsx             # React application entry point with ChakraProvider
+│   │   └── index.css            # Global CSS
+│   ├── .env                   # Environment variables for frontend (ignored by git, use .env.example)
+│   ├── .prettierrc.js
+│   ├── Dockerfile
+│   ├── index.html
+│   ├── package.json
+│   └── vite.config.js
+├── .env                       # Root .env for docker-compose variables (if any)
 ├── .gitignore
-├── DESIGN.MD # Project design document
-├── docker-compose.yml # Docker Compose configuration
-└── README.md # This file
+├── DESIGN.MD                  # Project design document/notes
+├── docker-compose.yml
+└── README.md                  # This file
+```
 
       
 ## Setup and Installation
@@ -211,7 +222,7 @@ This is the simplest way to get the application running locally.
 3.  **Choose a Game Mode:**
     - **Player vs Player (PvP):**
         - Player 1 creates the game. The UI will show "Waiting for Player 2..." and a Game ID.
-        - Player 2 (on another browser/tab, or a friend) will need the Game ID to join. *(Current UI doesn't have a "Join Game by ID" field - this is a manual step for now, e.g., by P2 connecting via WebSocket client and sending a JOIN_GAME message with the ID, or P1 sharing the full URL if we implement joining via URL params later).*
+        - Player 2 (on another browser/tab, or a friend) will need the Game ID to join. 
     - **Player vs AI (PvE):**
         - Select "Player vs AI" and choose the AI difficulty (Easy, Medium, or Hard).
         - Click "Create Game". The game starts immediately with you as Player X.
@@ -244,7 +255,7 @@ This is the simplest way to get the application running locally.
 
 
 1.  **Game Setup Screen:**
-    ![Game Setup Screen](./assets/game-setup.png)
+    ![Game Setup Screen](./assets/land.jpg)
     *(Description: Shows the initial screen where the user selects game mode (PvP, PvE, AvA) and AI difficulties.)*
 
 2.  **Player vs Player (PvP) - In Progress:**
@@ -252,42 +263,53 @@ This is the simplest way to get the application running locally.
     *(Description: A mid-game view of a PvP match, showing the board, pieces, game info, and controls for the current player.)*
 
 3.  **Player vs AI (PvE) - Medium AI - Player's Turn:**
-    ![PvE Medium AI Turn](./assets/pve-medium-turn.png)
+    ![PvE Medium AI Turn](./assets/pve-med.jpg)
     *(Description: Player X's turn against the Medium AI. Shows the board state and controls enabled for the player.)*
 
 4.  **AI vs AI (AvA) - Spectating:**
-    ![AvA Spectate Mode](./assets/ava-spectate.png)
+    ![AvA Spectate Mode](./assets/AvA.jpg)
     *(Description: Spectating an AI vs AI game. Shows the board updating automatically as AIs make moves. No controls are visible for the spectator.)*
 
 5.  **Game Over - Player Win:**
     ![Game Over - Player Wins](./assets/game-over-win.png)
     *(Description: The game over screen showing Player X (or O) as the winner, the final board state, and the "Play Again" button.)*
 
-6.  **Game Over - Draw:**
-    ![Game Over - Draw](./assets/game-over-draw.png)
-    *(Description: The game over screen showing a draw, the full board, and the "Play Again" button.)*
+## Architectural Notes & Refinements
+
+This project has undergone significant refactoring to improve code quality, maintainability, and adherence to software engineering principles:
+
+- **Backend Modularity:**
+    - The main WebSocket endpoint (`game_ws.py`) now acts as a dispatcher, delegating message processing to dedicated handler functions (e.g., `handle_create_game_message`, `handle_join_game_message`, `handle_make_move_message`).
+    - Complex game mode logic, such as the AI vs AI game loop (`ava_game_manager.py`) and AI turns in PvE games (`pve_game_manager.py`), has been extracted into separate service modules. This promotes the Single Responsibility Principle (SRP).
+    - `ConnectionManager` has been enhanced to map `client_id` to `WebSocket` instances within each game room, enabling reliable targeted messaging and simplified client tracking. Helper methods for common broadcast patterns (e.g., game updates, errors, game over) have been added.
+    - A centralized `constants.py` file is used for shared values like message types, game statuses, and payload keys, reducing magic strings and improving consistency.
+- **Frontend Modularity:**
+    - The main `GamePage.jsx` component has been refactored to utilize custom React hooks:
+        - `useGameWebSocket`: Encapsulates WebSocket connection setup, message sending, and initial reception.
+        - `useGameStateManager`: Manages core game state (`gameData`, `gameState`), loading/error states, and state update logic triggered by WebSocket events.
+    - UI rendering for different game phases (connecting, error, waiting, active play) has been broken down into distinct view components (e.g., `ConnectingToServerView.jsx`, `MainGamePlayView.jsx`), making `GamePage.jsx` primarily a view controller.
+    - A shared `gameConstants.js` file is used on the frontend for similar benefits as its backend counterpart.
+
+These refinements aim for a codebase that is easier to understand, test, debug, and extend, aligning with practices common in professional software development.
 
 
 ## Future Enhancements
 
-*(This section is optional but good to show foresight)*
-- **UI for Joining PvP Games:** Allow Player 2 to enter a Game ID to join an existing PvP game.
 - **Improved Visual Feedback:**
     - Highlight valid move spots on hover.
-    - Animate piece placement.
-    - Clearly highlight the winning line when the game ends.
-- **User Authentication & Profiles:** Allow users to create accounts, track stats, and have persistent identities.
-- **Matchmaking / Lobby:** A system to find opponents or list open games.
-- **More Advanced AI:**
-    - Transposition tables for Minimax to improve performance at deeper search depths.
-    - More sophisticated MCTS implementation.
-    - (Ambitious) Training a small neural network for board evaluation.
-- **Spectator Mode for PvP/PvE:** Allow users to watch ongoing human or PvE games.
-- **Game Replay:** Ability to review past games move by move.
-- **Enhanced Styling & Theming:** More UI polish, light/dark mode toggle.
+    - Animate piece placement and winning lines.
+- **User Authentication & Profiles:** Accounts, stats, persistent identities.
+- **Matchmaking / Lobby System.**
+- **More Advanced AI:** Transposition tables, MCTS, or even small ML models for board evaluation.
+- **Full Spectator Mode:** Allow watching any ongoing PvP/PvE game.
+- **Game Replay Feature.**
+- **UI/UX Polish:** Light/dark mode toggle, enhanced styling.
+- **Robust Player Disconnect Handling:** More graceful game state updates when a player disconnects mid-game (e.g., opponent wins by forfeit).
+- **Unit & Integration Tests:** Expanded test coverage for both frontend and backend.
 
 ## Known Issues / Limitations
 
-- **PvP Joining:** Currently, Player 2 joining a specific PvP game created by Player 1 requires manual coordination (e.g., P1 shares Game ID, P2 uses a WebSocket client tool to send JOIN_GAME). The UI does not yet support inputting a Game ID to join.
-- **Performance of Hard AI:** With `search_depth=5` or higher, the Hard AI can take several seconds per move, which might impact user experience.
-- **AvA Game Start:** The first move in an AvA game is triggered by an internal mechanism; there isn't a "start" button for the spectator once created.
+- **AI Performance (Hard):** The Hard AI can experience noticeable delays on complex board states due to deeper Minimax search.
+- **AvA Game Start:** Currently starts automatically; a manual "Start" button for spectators could be added.
+- **Error Handling:** While improved, can be further enhanced with more specific user feedback for certain edge cases.
+- **Scalability:** The current `ConnectionManager` (single instance) is suitable for a moderate number of concurrent games on a single server instance. For very high scalability, a distributed solution (e.g., using Redis Pub/Sub with multiple backend instances) would be necessary.
