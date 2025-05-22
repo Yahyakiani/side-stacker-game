@@ -1,6 +1,6 @@
 // frontend/src/pages/GamePage.jsx
 import React, { useState, useEffect, useCallback } from 'react'
-import { Box, VStack, Heading, Text, Spinner, useToast, Button, Container } from '@chakra-ui/react'
+import { VStack, Heading, Text, Spinner, useToast, Button, Container } from '@chakra-ui/react'
 import GameSetup from '../components/GameSetup'
 import Board from '../components/board/Board' // Uncomment
 import Controls from '../components/Controls'   // Import Controls
