@@ -1,11 +1,8 @@
 // frontend/src/components/Controls.jsx
 import React from 'react'
-import { Box, Button, VStack, HStack, Text, Grid, GridItem, Icon } from '@chakra-ui/react'
+import { Box, Button, VStack, HStack, Text, Icon } from '@chakra-ui/react'
 import { FaArrowLeft, FaArrowRight } from 'react-icons/fa' // For arrow icons
-
-// Assuming 7 rows, 7 columns based on game logic
-const NUM_ROWS = 7
-// const NUM_COLS = 7 // Not directly used here but good for context
+import { NUM_ROWS } from '../constants/gameConstants' // Assuming NUM_ROWS is defined in your constants
 
 const Controls = ({ onMakeMove, isDisabled, currentPlayerPiece }) => {
     const handleMove = (rowIndex, side) => {

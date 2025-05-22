@@ -9,6 +9,8 @@ import {
     // Potentially createGame, joinGame if you want to abstract them further
     // from GameSetup, but for now, let's keep them in socketService.js direct calls
 } from '../services/socketService';
+import { WS_MSG_TYPES } from '../constants/gameConstants'; // Assuming you have a constants file for message types
+
 
 const useGameWebSocket = (
     onGameCreatedOrJoined, // Callback for GAME_CREATED/JOINED
@@ -26,19 +28,19 @@ const useGameWebSocket = (
         switch (message.type) {
             // GAME_CREATED and GAME_JOINED are handled by the specific callback in socketService
             // which calls onGameCreatedOrJoined directly.
-            case "GAME_START":
+            case WS_MSG_TYPES.GAME_START:
                 onGameStart(message.payload);
                 break;
-            case "GAME_UPDATE":
+            case WS_MSG_TYPES.GAME_UPDATE:
                 onGameUpdate(message.payload);
                 break;
-            case "GAME_OVER":
+            case WS_MSG_TYPES.GAME_OVER:
                 onGameOver(message.payload);
                 break;
-            case "ERROR":
+            case WS_MSG_TYPES.ERROR:
                 onSocketError(message.payload.message || "Unknown server error message.");
                 break;
-            case "WAITING_FOR_PLAYER":
+            case WS_MSG_TYPES.WAITING_FOR_PLAYER:
                 onWaitingForPlayer(message.payload);
                 break;
             default:

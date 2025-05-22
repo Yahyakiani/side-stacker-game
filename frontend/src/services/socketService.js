@@ -1,21 +1,10 @@
 // frontend/src/services/socketService.js
 
+import { WS_MSG_TYPES } from '../constants/gameConstants';
+
 // --- Constants ---
 const DEFAULT_WS_BASE_URL = 'ws://localhost:8000/api/v1/ws-game/ws';
 const VITE_WS_BASE_URL = import.meta.env.VITE_WS_BASE_URL || DEFAULT_WS_BASE_URL;
-
-// Message Types (Consider moving to a shared constants file if used elsewhere)
-const MESSAGE_TYPES = {
-    GAME_CREATED: "GAME_CREATED",
-    GAME_JOINED: "GAME_JOINED",
-    CREATE_GAME: "CREATE_GAME",
-    JOIN_GAME: "JOIN_GAME",
-    MAKE_MOVE: "MAKE_MOVE",
-    ERROR: "ERROR",
-    // Add other message types as needed (e.g., GAME_START, GAME_UPDATE) if this service
-    // needs to be aware of them for specific logic, though generally the consuming hook
-    // (useGameWebSocket) handles parsing most incoming types.
-};
 
 // --- Module-level State ---
 let socketInstance = null; // Renamed for clarity to distinguish from a local 'socket' variable
@@ -75,7 +64,7 @@ export const connectWebSocket = (
 
             // Prioritize specific handlers if they exist
             if (
-                (message.type === MESSAGE_TYPES.GAME_CREATED || message.type === MESSAGE_TYPES.GAME_JOINED) &&
+                (message.type === WS_MSG_TYPES.GAME_CREATED || message.type === WS_MSG_TYPES.GAME_JOINED) &&
                 onGameSetupSuccess
             ) {
                 onGameSetupSuccess(message.payload, message.type); // Pass type for context
@@ -92,7 +81,7 @@ export const connectWebSocket = (
             // if not intended to be routed through the general message handler first.
             // This is somewhat redundant if the general handler in useGameWebSocket also processes "ERROR".
             // If onGeneralMessage handles "ERROR", this block might be removed or conditioned.
-            if (message.type === MESSAGE_TYPES.ERROR && onConnectionError && !onGeneralMessage) {
+            if (message.type === WS_MSG_TYPES.ERROR && onConnectionError && !onGeneralMessage) {
                 // Only if onGeneralMessage isn't defined, otherwise let it handle ERROR.
                 onConnectionError(message.payload?.message || 'Unknown server error');
             }
@@ -180,7 +169,7 @@ export const createGame = (mode = 'PVP', options = {}) => {
     }
     // No specific options needed for PVP from the frontend in this structure.
 
-    sendMessage({ type: MESSAGE_TYPES.CREATE_GAME, payload });
+    sendMessage({ type: WS_MSG_TYPES.CREATE_GAME, payload });
 };
 
 export const joinGame = (gameIdToJoin) => {
@@ -194,7 +183,7 @@ export const joinGame = (gameIdToJoin) => {
         player_temp_id: getClientId(),
         game_id: String(gameIdToJoin).trim(), // Ensure it's a string and trimmed
     };
-    sendMessage({ type: MESSAGE_TYPES.JOIN_GAME, payload });
+    sendMessage({ type: WS_MSG_TYPES.JOIN_GAME, payload });
 };
 
 export const makeMove = (gameId, playerToken, row, side) => {
@@ -214,7 +203,7 @@ export const makeMove = (gameId, playerToken, row, side) => {
         row: parseInt(row, 10), // Ensure row is an integer
         side: String(side).toUpperCase().trim(),
     };
-    sendMessage({ type: MESSAGE_TYPES.MAKE_MOVE, payload });
+    sendMessage({ type: WS_MSG_TYPES.MAKE_MOVE, payload });
 };
 
 // --- Utility ---

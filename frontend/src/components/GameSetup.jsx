@@ -3,20 +3,21 @@ import React, { useState } from 'react';
 import {
     Box, Button, VStack, Heading, RadioGroup, Radio, Stack, Select, Text,
     Input,
-    useToast, // <<< ADD useToast for feedback
-    FormControl, FormLabel, // <<< ADD FormControl, FormLabel
-    Tabs, TabList, Tab, TabPanels, TabPanel // <<< ADD Tabs
+    useToast,
+    FormControl, FormLabel,
+    Tabs, TabList, Tab, TabPanels, TabPanel
 } from '@chakra-ui/react';
-import { createGame, joinGame } from '../services/socketService'; // <<< ADD joinGame
+import { createGame, joinGame } from '../services/socketService';
+import { GAME_MODES, AI_DIFFICULTY } from '../constants/gameConstants'; 
 
 const GameSetup = ({ setIsLoading, setError, isLoading }) => {
     const [tabIndex, setTabIndex] = useState(0); // 0 for Create, 1 for Join
 
     // Create Game State
-    const [createGameMode, setCreateGameMode] = useState('PVP');
-    const [pveAiDifficulty, setPveAiDifficulty] = useState('EASY');
-    const [avaAi1Difficulty, setAvaAi1Difficulty] = useState('EASY');
-    const [avaAi2Difficulty, setAvaAi2Difficulty] = useState('EASY');
+    const [createGameMode, setCreateGameMode] = useState(GAME_MODES.PVP);
+    const [pveAiDifficulty, setPveAiDifficulty] = useState(AI_DIFFICULTY.EASY);
+    const [avaAi1Difficulty, setAvaAi1Difficulty] = useState(AI_DIFFICULTY.EASY);
+    const [avaAi2Difficulty, setAvaAi2Difficulty] = useState(AI_DIFFICULTY.EASY);
 
     // Join Game State
     const [joinGameId, setJoinGameId] = useState('');
@@ -27,10 +28,10 @@ const GameSetup = ({ setIsLoading, setError, isLoading }) => {
         setIsLoading(true);
 
         let optionsForSocket = {};
-        if (createGameMode === 'PVE') {
+        if (createGameMode === GAME_MODES.PVE) {
             optionsForSocket = pveAiDifficulty;
-        } else if (createGameMode === 'AVA') {
-            optionsForSocket = { 
+        } else if (createGameMode === GAME_MODES.AVA) {
+            optionsForSocket = {
                 ai1_difficulty: avaAi1Difficulty,
                 ai2_difficulty: avaAi2Difficulty
             };
