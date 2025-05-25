@@ -9,7 +9,7 @@ const GameInfo = ({ gameData, gameState }) => {
     }
 
     const { player_piece: myPiece, player_token: myToken, game_mode: gameMode } = gameData
-    const { current_player_token, status, winner_token, players_map } = gameState
+    const { current_player_token, status, winner_token, players_map, game_over_reason } = gameState
 
     const isSpectator = gameMode && gameMode.startsWith('AVA')
 
@@ -27,6 +27,16 @@ const GameInfo = ({ gameData, gameState }) => {
     if (status === GAME_STATUS.WAITING || status === GAME_STATUS.WAITING_FOR_PLAYER_2) {
         statusMessage = "Waiting for opponent..."
         statusColorScheme = "orange"
+    } else if (game_over_reason === "opponent_disconnected") {
+        // This is the new specific handling
+        if (winner_token && players_map[winner_token]) {
+            const winnerPieceDisplay = players_map[winner_token];
+            statusMessage = `Player ${winnerPieceDisplay} Wins! (Opponent Left)`;
+            statusColorScheme = (gameData?.player_token === winner_token) ? "green" : "red";
+        } else {
+            statusMessage = "Opponent Disconnected"; // Fallback
+            statusColorScheme = "yellow";
+        }
     } else if (status.includes("wins")) {
         const winnerPieceDisplay = players_map && winner_token ? players_map[winner_token] : '?'
         statusMessage = `Player ${winnerPieceDisplay} Wins!`

@@ -558,6 +558,76 @@ async def handle_join_game_message(
     return game_to_join_id_str
 
 
+# kept in game_message_handlers.py / game_ws.py
+async def handle_player_departure_in_active_game(
+    game_id_str: str,
+    disconnected_player_token: str, # This is the client_id that was associated with the game
+    db: Session
+):
+    logger.info(f"Handling player departure: Player {disconnected_player_token} from game {game_id_str}")
+    try:
+        game_uuid = uuid.UUID(game_id_str)
+        db_game = crud_game.get_game(db, game_id=game_uuid)
+
+        if not db_game:
+            logger.warning(f"Game {game_id_str} not found during disconnect handling for player {disconnected_player_token}.")
+            return
+
+        if db_game.status != constants.GAME_STATUS_ACTIVE:
+            logger.info(f"Game {game_id_str} is not active (status: {db_game.status}). No forfeit action needed for player {disconnected_player_token}.")
+            return
+
+        # Determine who the remaining player is and their piece
+        remaining_player_token = None
+        winning_piece_by_forfeit = None
+
+        if db_game.player1_token == disconnected_player_token:
+            remaining_player_token = db_game.player2_token
+            winning_piece_by_forfeit = constants.PLAYER_O # P2 (O) wins if P1 (X) disconnects
+        elif db_game.player2_token == disconnected_player_token:
+            remaining_player_token = db_game.player1_token
+            winning_piece_by_forfeit = constants.PLAYER_X # P1 (X) wins if P2 (O) disconnects
+        else:
+            # Disconnected client was not P1 or P2 (e.g., a spectator, or an already ended game)
+            logger.info(f"Player {disconnected_player_token} was not an active player in game {game_id_str}. No forfeit.")
+            return
+
+        if not remaining_player_token:
+            # This could happen in a PVE game if the human disconnects and AI is P2,
+            # or if game setup was incomplete. For PvP, remaining_player_token should exist.
+            logger.warning(f"Could not determine remaining player in game {game_id_str} after {disconnected_player_token} disconnected.")
+            # Potentially mark game as abandoned or error
+            crud_game.update_game_state(db, game_id=game_uuid, status="error_abandoned", current_player_token=None, winner_token=None)
+            await manager.broadcast_error_to_game(game_id_str, "A player disconnected, game cannot continue.")
+            return
+
+        logger.info(f"Player {disconnected_player_token} disconnected from active game {game_id_str}. Player {remaining_player_token} wins by forfeit.")
+        
+        new_status = constants.get_win_status(winning_piece_by_forfeit)
+        crud_game.update_game_state(
+            db,
+            game_id=game_uuid,
+            status=new_status,
+            winner_token=remaining_player_token,
+            current_player_token=None # Game is over
+        )
+
+        # Fetch the final board state to broadcast
+        final_board_state = db_game.board_state.get("board", service_create_board()) # Use current board, as no new move was made
+
+        await manager.broadcast_game_over(
+            game_id_str,
+            final_board_state,
+            new_status,
+            remaining_player_token,
+            winning_piece_by_forfeit,
+            reason="opponent_disconnected"
+        )
+        logger.info(f"Broadcasted GAME_OVER for game {game_id_str} due to player {disconnected_player_token} disconnect.")
+
+    except Exception as e:
+        logger.exception(f"Error in handle_player_departure_in_active_game for game {game_id_str}, player {disconnected_player_token}: {e}")
+
 @router.websocket("/ws/{client_id}")
 async def websocket_endpoint(
     websocket: WebSocket, client_id: str, db: Session = Depends(get_db)
@@ -636,16 +706,33 @@ async def websocket_endpoint(
                 await manager.send_error(websocket, "Error processing your request.")
 
     except WebSocketDisconnect:
-        logger.info(
-            f"Client {client_id} disconnected from game {current_active_game_id or 'N/A'}."
-        )
-        if current_active_game_id:
-            manager.disconnect(websocket, current_active_game_id)
-            # TODO: Add logic here to handle player disconnection if they were in an active game
-            # e.g., notify opponent, forfeit game, etc. This is crucial for robustness.
-            # game = crud_game.get_game(db, game_id=uuid.UUID(current_active_game_id))
-            # if game and game.status == constants.GAME_STATUS_ACTIVE:
-            #    pass # Handle disconnect logic
+        # client_id here is the path parameter client_id
+        # We need the game_id and the specific client_id that was associated with *this websocket* in that game
+        
+        disconnect_context = manager.websocket_to_ids.get(websocket)
+        game_id_of_disconnected_ws = None
+        client_id_of_disconnected_ws = None
+
+        if disconnect_context:
+            game_id_of_disconnected_ws = disconnect_context.get("game_id")
+            client_id_of_disconnected_ws = disconnect_context.get("client_id")
+            logger.info(f"Client {client_id_of_disconnected_ws or client_id} (WebSocket: {websocket}) disconnected from game {game_id_of_disconnected_ws or 'N/A'}.")
+        else:
+            logger.info(f"Client {client_id} (WebSocket: {websocket}) disconnected. No game context found in manager for this websocket.")
+
+        manager.disconnect(websocket) # Clean up from ConnectionManager
+
+        # Now, handle game-specific logic if they were in an active game
+        if game_id_of_disconnected_ws and client_id_of_disconnected_ws:
+            # Run this as a background task so it doesn't block the disconnect cleanup
+            # and has its own DB session if needed (handle_player_departure_in_active_game should manage its own session)
+            # For simplicity now, calling directly. For production, consider background task.
+            # You'd need a way to pass a DB session or have the handler create one.
+            # For now, assuming 'db' from Depends(get_db) is still valid for this short operation.
+            # If handle_player_departure_in_active_game uses SessionLocal(), it's fine.
+            await handle_player_departure_in_active_game(game_id_of_disconnected_ws, client_id_of_disconnected_ws, db)
+        
+        current_active_game_id = None # Clear for this connection instance
     except Exception as e:  # Catch exceptions in the main WebSocket loop
         logger.error(f"Unhandled exception in WebSocket endpoint for {client_id}: {e}")
         # Attempt to close gracefully if possible
@@ -654,11 +741,12 @@ async def websocket_endpoint(
         except RuntimeError:  # If already closed or cannot close
             pass
     finally:
-        # This ensures disconnection from manager even if an error occurs before explicit disconnect
-        if current_active_game_id and websocket in manager.active_connections.get(
-            current_active_game_id, []
-        ):
-            logger.info(
-                f"Ensuring cleanup for {client_id} from game {current_active_game_id} in finally block."
-            )
-            manager.disconnect(websocket, current_active_game_id)
+        logger.info(f"WebSocket for client {client_id} (instance: {websocket}) entering finally block. Current game: {current_active_game_id or 'N/A'}")
+        # The manager.disconnect(websocket) will use its internal websocket_to_ids mapping
+        # to find the correct game_id and client_id for cleanup if this websocket is known.
+        # This handles cases where the loop exited due to an error before explicit disconnect.
+        if manager.websocket_to_ids.get(websocket): # Check if this websocket is even known to the manager
+             logger.info(f"Performing cleanup disconnect for websocket {websocket} via finally block.")
+             manager.disconnect(websocket) # This is synchronous
+        else:
+             logger.info(f"Websocket {websocket} not found in manager's active mappings; no explicit disconnect from manager needed in finally.")

@@ -195,6 +195,7 @@ class ConnectionManager:
         status: str,
         winner_token: Optional[str],
         winning_player_piece: Optional[str],
+        reason: Optional[str] = None,
         exclude_client_id: Optional[str] = None,
     ):
         payload = {
@@ -203,6 +204,7 @@ class ConnectionManager:
             "status": status,
             "winner_token": winner_token,
             "winning_player_piece": winning_player_piece,
+            "reason": reason,
         }
         await self.broadcast_to_game(
             {"type": constants.WS_MSG_TYPE_GAME_OVER, "payload": payload},

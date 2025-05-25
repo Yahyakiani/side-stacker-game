@@ -1,11 +1,12 @@
 // src/hooks/useGameStateManager.js (New File)
 import { useState, useCallback } from 'react';
 import { useToast } from '@chakra-ui/react';
+import { GAME_STATUS } from '../constants/gameConstants'
 
 const INITIAL_GAME_STATE = {
     board: Array(7).fill(Array(7).fill(null)),
     current_player_token: null,
-    status: 'setup', // 'setup', 'waiting', 'active', 'over'
+    status: GAME_STATUS.SETUP, // 'setup', 'waiting', 'active', 'over'
     winner_token: null,
     players_map: {},
     last_move: null,
@@ -52,7 +53,7 @@ const useGameStateManager = (clientId) => {
             board: payload.board,
             current_player_token: payload.current_player_token,
             players_map: payload.players,
-            status: 'active',
+            status: GAME_STATUS.ACTIVE,
             winner_token: null,
             last_move: null,
         }));
@@ -82,7 +83,7 @@ const useGameStateManager = (clientId) => {
             board: payload.board,
             current_player_token: payload.current_player_token,
             last_move: payload.last_move,
-            status: 'active', // Ensure status remains active
+            status: GAME_STATUS.ACTIVE, // Ensure status remains active
         }));
     }, []);
 
@@ -94,21 +95,43 @@ const useGameStateManager = (clientId) => {
             current_player_token: null,
             status: payload.status, // e.g., "player_x_wins", "draw"
             winner_token: payload.winner_token,
+            game_over_reason: payload.reason || null
         }));
-        let WinnerText = "Game Over!";
-        if (payload.winner_token === "draw") {
-            WinnerText = "It's a Draw!";
+        let titleText = "Game Over!";
+        let descriptionText = null; // Optional description for toast
+        let toastStatus = "info"; // Default toast status
+
+        if (payload.reason === "opponent_disconnected") {
+            if (payload.winner_token === gameData?.player_token) { // Check if I am the winner
+                titleText = "You Win by Forfeit!";
+                descriptionText = "Your opponent disconnected from the game.";
+                toastStatus = "success";
+            } else if (payload.winner_token) { // Opponent won because I disconnected (shouldn't happen if this client is still connected)
+                // Or if it's a spectator view and one player disconnected
+                const winnerPiece = gameState.players_map[payload.winner_token] || payload.winning_player_piece || '?';
+                titleText = `Player ${winnerPiece} Wins by Forfeit!`;
+                descriptionText = `The other player disconnected.`;
+                toastStatus = "warning"; // Or info
+            } else { // Should not happen in a 2-player game disconnect scenario if one wins by forfeit
+                titleText = "Game Ended: Opponent Disconnected";
+                toastStatus = "warning";
+            }
+        } else if (payload.winner_token === GAME_STATUS.DRAW) { // Assuming 'draw' constant
+            titleText = "It's a Draw!";
+            toastStatus = "warning";
         } else if (payload.winner_token) {
-            const winnerPiece = gameState.players_map[payload.winner_token] || payload.winning_player_piece;
-            WinnerText = `Player ${winnerPiece} Wins!`;
+            const winnerPiece = gameState.players_map[payload.winner_token] || payload.winning_player_piece || '?';
+            titleText = `Player ${winnerPiece} Wins!`;
+            toastStatus = gameData?.player_token === payload.winner_token ? "success" : "error"; // Or 'info' if I lost
         }
         toast({
-            title: WinnerText,
-            status: payload.winner_token === "draw" ? "warning" : "success",
-            duration: 5000,
+            title: titleText,
+            description: descriptionText,
+            status: toastStatus,
+            duration: 4000,
             isClosable: true,
         });
-    }, [toast, gameState.players_map]);
+    }, [toast, gameState.players_map, gameData?.player_token]);
 
     const handleWaitingForPlayer = useCallback((payload) => {
         console.log("useGameStateManager: WAITING_FOR_PLAYER received:", payload);
@@ -121,7 +144,7 @@ const useGameStateManager = (clientId) => {
             duration: null, // Keep open until explicitly closed or game starts
             isClosable: true,
         });
-        setGameState(prevState => ({ ...prevState, status: 'waiting' }));
+        setGameState(prevState => ({ ...prevState, status: GAME_STATUS.WAITING }));
     }, [toast]);
 
     const handleExternalError = useCallback((errorMessage) => { // For errors from socket or other sources
