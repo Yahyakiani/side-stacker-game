@@ -17,7 +17,10 @@ export const GAME_STATUS = {
     INFO: 'info', // For informational messages
     ERROR: 'error', // For error messages
     // Add any other status strings your backend might send or frontend uses
-    // SPECTATING: 'spectating', // If you had a distinct status for this
+    WAITING_FOR_PLAYER_2: 'waiting_for_player2', // Specific waiting status for P2
+    GAME_OVER: 'game_over', // General game over status
+
+
 };
 
 // Player Pieces

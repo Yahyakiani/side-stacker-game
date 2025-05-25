@@ -6,15 +6,15 @@ from typing import Tuple, List, Optional, Dict
 from .base_bot import BaseBot, GameLogicBoard
 from app.services.game_logic import (
     is_valid_move,
-    check_win,
-    ROWS,
+    check_win
+)
+from app.core.constants import (
     COLS,
     PLAYER_X,
     PLAYER_O,
     EMPTY_CELL,
-    CONNECT_N,
-    # We need a way to simulate apply_move without modifying the board passed,
-    # or by always working on copies.
+    ROWS,
+    CONNECT_N
 )
 
 from app.core.logging_config import setup_logger

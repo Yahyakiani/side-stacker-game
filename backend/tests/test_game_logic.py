@@ -4,13 +4,15 @@ from app.services.game_logic import (
     is_valid_move,
     apply_move,
     check_win,
-    check_draw,
+    check_draw
+)
+from app.core.constants import (
     PLAYER_X,
     PLAYER_O,
     EMPTY_CELL,
     ROWS,
     COLS,
-    CONNECT_N
+    CONNECT_N,
 )
 
 def test_create_board():

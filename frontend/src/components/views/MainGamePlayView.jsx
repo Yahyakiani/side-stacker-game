@@ -4,10 +4,8 @@ import { Container, VStack, Heading, Text, Spinner, Button } from '@chakra-ui/re
 import GameInfo from '../GameInfo'; // Assuming GameInfo is in ../components/
 import Board from '../board/Board';   // Assuming Board is in ../components/board/
 import Controls from '../Controls'; // Assuming Controls is in ../components/
+import { GAME_STATUS } from '../../constants/gameConstants'; // Adjust the import path as necessary
 
-// Make sure GAME_STATUS is accessible here or passed as props if needed for complex logic
-// For simplicity, we'll rely on the parent (GamePage) to decide when to show this view.
-const GAME_STATUS_ACTIVE = 'active'; // Or import from a shared constants file
 
 const MainGamePlayView = ({
     gameData,
@@ -19,8 +17,8 @@ const MainGamePlayView = ({
     error,     // For errors occurring during active gameplay
     onResetGame
 }) => {
-    const isGameActive = gameState.status === GAME_STATUS_ACTIVE;
-    const isGameOver = !isGameActive && gameState.status !== 'setup' && gameState.status !== 'waiting'; // Simplified game over check
+    const isGameActive = gameState.status === GAME_STATUS.ACTIVE;
+    const isGameOver = !isGameActive && gameState.status !== GAME_STATUS.SETUP && gameState.status !== GAME_STATUS.WAITING; // Simplified game over check
 
     return (
         <Container maxW="container.md" py={6}>

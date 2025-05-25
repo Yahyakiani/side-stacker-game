@@ -6,12 +6,14 @@ from .base_bot import BaseBot, GameLogicBoard
 from app.services.game_logic import (  # Import necessary functions from game_logic
     is_valid_move,
     apply_move as service_apply_move,  # To avoid confusion if we had a local apply_move
-    check_win,
-    ROWS,
+    check_win
+)
+from app.core.constants import (
     COLS,
     PLAYER_X,
     PLAYER_O,
     EMPTY_CELL,
+    ROWS,
 )
 
 from app.core.logging_config import setup_logger

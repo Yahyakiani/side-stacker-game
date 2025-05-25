@@ -1,5 +1,6 @@
 // frontend/src/components/GameInfo.jsx
 import { Box, Text, Heading, Tag, VStack, HStack, Button, useClipboard, useToast, Icon } from '@chakra-ui/react'
+import { GAME_STATUS } from '../constants/gameConstants'
 import { FaCopy } from 'react-icons/fa'
 
 const GameInfo = ({ gameData, gameState }) => {
@@ -23,14 +24,14 @@ const GameInfo = ({ gameData, gameState }) => {
 
 
 
-    if (status === 'waiting' || status === 'waiting_for_player2') {
+    if (status === GAME_STATUS.WAITING || status === GAME_STATUS.WAITING_FOR_PLAYER_2) {
         statusMessage = "Waiting for opponent..."
         statusColorScheme = "orange"
     } else if (status.includes("wins")) {
         const winnerPieceDisplay = players_map && winner_token ? players_map[winner_token] : '?'
         statusMessage = `Player ${winnerPieceDisplay} Wins!`
         statusColorScheme = winner_token === myToken ? "green" : "red"
-    } else if (status === "draw") {
+    } else if (status === GAME_STATUS.DRAW) {
         statusMessage = "It's a Draw!"
         statusColorScheme = "gray"
     }
@@ -55,7 +56,7 @@ const GameInfo = ({ gameData, gameState }) => {
                 </Tag>
 
                 {/* Turn Indicator */}
-                {status === 'active' && current_player_token && (
+                {status === GAME_STATUS.ACTIVE && current_player_token && (
                     <Text textAlign="center" fontSize="lg" fontWeight="bold" color={isMyTurn ? "green.300" : (isSpectator ? "white.300" : "orange.300")}>
                         Turn: Player {currentPlayerPieceDisplay}
                         {isMyTurn && " (Your Turn)"}

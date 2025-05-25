@@ -1,6 +1,6 @@
 // frontend/src/services/socketService.js
 
-import { WS_MSG_TYPES } from '../constants/gameConstants';
+import { WS_MSG_TYPES, AI_DIFFICULTY, GAME_MODES } from '../constants/gameConstants';
 
 // --- Constants ---
 const DEFAULT_WS_BASE_URL = 'ws://localhost:8000/api/v1/ws-game/ws';
@@ -142,29 +142,29 @@ export const createGame = (mode = 'PVP', options = {}) => {
         mode: upperCaseMode,
     };
 
-    if (upperCaseMode === 'PVE') {
+    if (upperCaseMode === GAME_MODES.PVE) {
         if (typeof options === 'string' && options.trim() !== '') {
             payload.difficulty = options.toUpperCase();
         } else {
             console.warn("socketService: PVE mode - 'options' should be a non-empty difficulty string. Defaulting to EASY.");
-            payload.difficulty = "EASY";
+            payload.difficulty = AI_DIFFICULTY.EASY; // Default to EASY if not provided
         }
-    } else if (upperCaseMode === 'AVA') {
+    } else if (upperCaseMode === GAME_MODES.AVA) {
         if (typeof options === 'object' && options !== null) {
             if (options.ai1_difficulty) payload.ai1_difficulty = options.ai1_difficulty.toUpperCase();
             else {
                 console.warn("socketService: AVA mode - 'ai1_difficulty' missing in options. Defaulting to EASY.");
-                payload.ai1_difficulty = "EASY";
+                payload.ai1_difficulty = AI_DIFFICULTY.EASY;
             }
             if (options.ai2_difficulty) payload.ai2_difficulty = options.ai2_difficulty.toUpperCase();
             else {
                 console.warn("socketService: AVA mode - 'ai2_difficulty' missing in options. Defaulting to EASY.");
-                payload.ai2_difficulty = "EASY";
+                payload.ai2_difficulty = AI_DIFFICULTY.EASY;
             }
         } else {
             console.warn("socketService: AVA mode - 'options' object for AI difficulties not provided correctly. Defaulting AI difficulties to EASY.");
-            payload.ai1_difficulty = "EASY";
-            payload.ai2_difficulty = "EASY";
+            payload.ai1_difficulty = AI_DIFFICULTY.EASY;
+            payload.ai2_difficulty = AI_DIFFICULTY.EASY;
         }
     }
     // No specific options needed for PVP from the frontend in this structure.

@@ -13,15 +13,9 @@ import WaitingForOpponentView from '../components/views/WaitingForOpponentView';
 import MainGamePlayView from '../components/views/MainGamePlayView';
 import DefaultLoadingView from '../components/views/DefaultLoadingView';
 import GameSetup from '../components/GameSetup'; // GameSetup is a distinct phase
+import { GAME_STATUS } from '../constants/gameConstants';
 
-// Constants
-const GAME_STATUS = {
-    SETUP: 'setup',
-    WAITING: 'waiting',
-    // WAITING_FOR_PLAYER2: 'waiting_for_player2', // This specific status might be consolidated into 'waiting'
-    ACTIVE: 'active',
-    // Define 'over' statuses more generically or check based on absence of other states
-};
+
 
 const GamePage = () => {
     const toast = useToast(); // If GamePage itself needs to show toasts not handled by hooks/views
@@ -129,7 +123,7 @@ const GamePage = () => {
 
     // Active Game or Game Over Phase
     // Check if gameState and gameData are sufficiently populated for main play
-    if (gameData && (gameState.status === GAME_STATUS.ACTIVE || gameState.status.includes('wins') || gameState.status === 'draw')) {
+    if (gameData && (gameState.status === GAME_STATUS.ACTIVE || gameState.status.includes('wins') || gameState.status === GAME_STATUS.DRAW)) {
         return (
             <MainGamePlayView
                 gameData={gameData}

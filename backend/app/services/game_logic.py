@@ -1,13 +1,11 @@
 from typing import List, Optional, Tuple
 
+from app.core.constants import EMPTY_CELL, PLAYER_O, PLAYER_X, ROWS, COLS, CONNECT_N
+# Constants for the game board
 
-ROWS: int = 7
-COLS: int = 7
-CONNECT_N: int = 4
 
-PLAYER_X: str = "X"
-PLAYER_O: str = "O"
-EMPTY_CELL: Optional[str] = None
+
+
 
 Board = List[List[Optional[str]]]
 
