@@ -1,7 +1,4 @@
 # backend/app/services/ava_game_manager.py (NEW FILE)
-# Or keep it in game_ws.py if it's not reused elsewhere, but for SRP, a new file is better.
-# For now, I'll assume we are refactoring it within game_ws.py context first,
-# and then we can decide to move it.
 
 import asyncio
 import uuid

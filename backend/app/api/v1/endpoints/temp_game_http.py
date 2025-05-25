@@ -1,3 +1,7 @@
+#File: temp_game_http.py
+# backend/app/api/v1/endpoints/temp_game_http.py
+
+
 from fastapi import APIRouter, HTTPException, Path, Body, Depends
 from sqlalchemy.orm import Session
 from typing import Any, Optional

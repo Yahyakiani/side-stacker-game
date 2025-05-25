@@ -1,3 +1,5 @@
+# File: models.py
+# backend/app/db/models.py
 from datetime import datetime
 import uuid
 from sqlalchemy import (

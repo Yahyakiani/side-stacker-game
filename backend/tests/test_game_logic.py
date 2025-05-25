@@ -1,3 +1,7 @@
+# File: test_game_logic.py
+# backend/tests/test_game_logic.py
+# Test cases for game logic functions
+
 import pytest
 from app.services.game_logic import (
     create_board,

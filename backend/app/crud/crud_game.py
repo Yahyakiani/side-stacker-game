@@ -1,3 +1,6 @@
+# File: crud_game.py
+# backend/app/crud/crud_game.py
+
 from sqlalchemy.orm import Session
 from typing import Optional, Dict, Any, List
 import uuid
