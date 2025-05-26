@@ -426,3 +426,17 @@ Phase 4: Full PvP Gameplay via WebSockets
 *   Game replay functionality (would likely require saving all moves to the DB).
 *   Improved responsive design for various screen sizes.
 *   Animations for piece placement and game events.
+*   
+
+### Phase 11: UI Refinement - Adjacent Game Controls
+
+*   **Task:** Relocate game controls to be adjacent to the game board.
+    *   **Description:** Modify the game interface so that the columns of buttons for selecting (Row + Side) are positioned directly to the left and right of the 7x7 game board, instead of below it. This aims to improve the intuitiveness of the player interaction.
+    *   **Steps:**
+        1.  Modify `frontend/src/components/views/MainGamePlayView.jsx` to incorporate the control button columns flanking the `Board` component using a horizontal layout (e.g., Chakra UI `HStack`).
+        2.  Transfer the logic for rendering these buttons (previously in `Controls.jsx`) into `MainGamePlayView.jsx`.
+        3.  Delete the `frontend/src/components/Controls.jsx` file and remove its import and usage from `MainGamePlayView.jsx`.
+        4.  Adjust styling as needed to ensure the buttons align well with the board rows and the overall layout is visually appealing and functional.
+        5.  Relocate or update the instructional text (e.g., "Click a side to place your piece") to fit the new layout.
+        6.  Test the new control layout across different game states (player's turn, opponent's turn, game over) and modes (PvP, PvE) to ensure functionality and correct disabling of controls.
+*   **Status:** PENDING
