@@ -34,6 +34,7 @@ const Board = ({ boardData }) => { // boardData will be a 2D array
                 p="4px" // Padding inside the grid, around cells
                 bg={useColorModeValue('gray.200', 'gray.900')} // Background for the grid container itself
                 shadow="md"
+
             >
                 {boardData.map((row, rowIndex) =>
                     row.map((cell, colIndex) => (
