@@ -41,14 +41,36 @@ def update_player_stats_on_game_end( # Renamed by removing leading underscore
         loser_user_id_for_stats = player1_user_id
     
     if abandoned_by_user_id:
+        # User who abandoned gets an 'abandoned_by_user' and a 'loss'
+        # games_played is incremented by STAT_ABANDONED
         crud_user_stats.increment_user_stat(db, abandoned_by_user_id, constants.STAT_ABANDONED, increment_games_played=True)
+        # games_played is NOT incremented again for the loss part of an abandonment
         crud_user_stats.increment_user_stat(db, abandoned_by_user_id, constants.STAT_LOSSES, increment_games_played=False)
         
+        # If there was an opponent who is a user and didn't abandon, they get a win.
+        # winner_user_id_for_stats would be the ID of the player who remained and won by forfeit.
         if winner_user_id_for_stats and winner_user_id_for_stats != abandoned_by_user_id:
             crud_user_stats.increment_user_stat(db, winner_user_id_for_stats, constants.STAT_WINS, increment_games_played=True)
-        logger.info(f"Stats updated for abandonment: Abandoned by User: {abandoned_by_user_id}, Winner User: {winner_user_id_for_stats}")
-    elif winner_user_id_for_stats: # Normal win/loss
-        crud_user_stats.increment_user_stat(db, winner_user_id_for_stats, constants.STAT_WINS)
-        if loser_user_id_for_stats:
+        logger.info(f"Stats updated for abandonment: Abandoned by User: {abandoned_by_user_id}, Winner User (if any): {winner_user_id_for_stats}")
+    
+    # If not an abandonment, proceed with normal win/loss or AI win vs Human loss
+    elif winner_token: # Ensure there is a winner_token (could be player or AI token, or 'draw' if logic was different)
+        if winner_user_id_for_stats: # A human user won
+            crud_user_stats.increment_user_stat(db, winner_user_id_for_stats, constants.STAT_WINS)
+            logger.info(f"Stats updated for win: Winner User: {winner_user_id_for_stats}")
+        
+        if loser_user_id_for_stats: # A human user lost (either to another human or to AI)
             crud_user_stats.increment_user_stat(db, loser_user_id_for_stats, constants.STAT_LOSSES)
-        logger.info(f"Stats updated for win/loss: Winner User: {winner_user_id_for_stats}, Loser User: {loser_user_id_for_stats}")
+            logger.info(f"Stats updated for loss: Loser User: {loser_user_id_for_stats}")
+        
+        # Case: AI won (winner_user_id_for_stats is None), Human lost (loser_user_id_for_stats is set)
+        # This is covered by the `if loser_user_id_for_stats:` block above.
+        
+        # Case: Human won (winner_user_id_for_stats is set), AI lost (loser_user_id_for_stats is None)
+        # This is covered by the `if winner_user_id_for_stats:` block above.
+
+        if not winner_user_id_for_stats and not loser_user_id_for_stats:
+             logger.warning(f"Stats update: Game ended with winner_token ({winner_token}), but neither player was a tracked user.")
+
+    else: # No winner_token (and not a draw, and not an abandonment handled above)
+        logger.warning(f"Stats update: Game ended with no winner_token, not a draw, and not an abandonment. P1_User: {player1_user_id}, P2_User: {player2_user_id}. No stats updated for win/loss.")

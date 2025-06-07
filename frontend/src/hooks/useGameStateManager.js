@@ -42,24 +42,25 @@ const useGameStateManager = (clientId) => { // clientId is passed in (e.g. from 
     // Effect to load username from localStorage on initial mount
     useEffect(() => {
         const storedUsername = localStorage.getItem('sideStackerUsername');
-        if (storedUsername) {
-            setUsername(storedUsername);
-            // Stats will be fetched by the effect below that watches 'username'
+        const trimmedStoredUsername = storedUsername.trim();
+        if (trimmedStoredUsername) {
+            setUsername(trimmedStoredUsername);
         }
     }, []); // Empty dependency array: runs once on mount
 
     // Function to fetch and update user stats
     const fetchAndSetUserStats = useCallback(async (currentUsernameToFetch) => {
-        if (!currentUsernameToFetch || !currentUsernameToFetch.trim()) {
+        const trimmedUsername = typeof currentUsernameToFetch === 'string' ? currentUsernameToFetch.trim() : '';
+        if (!trimmedUsername) {
             setUserStats(INITIAL_USER_STATS); // Reset stats if username is invalid/cleared
             setStatsError(null);
             return;
         }
         setStatsLoading(true);
         setStatsError(null);
-        console.log(`useGameStateManager: Attempting to fetch stats for ${currentUsernameToFetch}`);
+        console.log(`useGameStateManager: Attempting to fetch stats for ${trimmedUsername}`);
         try {
-            const result = await fetchUserStatsAPI(currentUsernameToFetch.trim());
+            const result = await fetchUserStatsAPI(trimmedUsername);
             if (result.success && result.data) {
                 setUserStats({ // Ensure we map to the structure of INITIAL_USER_STATS
                     games_played: result.data.games_played ?? 0,
@@ -93,7 +94,8 @@ const useGameStateManager = (clientId) => { // clientId is passed in (e.g. from 
 
     // Effect to fetch stats when username changes (and is not empty)
     useEffect(() => {
-        if (username && username.trim()) {
+        const trimmedUsername = typeof username === 'string' ? username.trim() : '';
+        if (trimmedUsername) {
             fetchAndSetUserStats(username);
         } else {
             // If username is cleared or becomes invalid, reset stats
@@ -107,9 +109,9 @@ const useGameStateManager = (clientId) => { // clientId is passed in (e.g. from 
         setGameState(INITIAL_GAME_STATE);
         setError(null);
         setIsLoading(false);
-        // ### NEW LINE/BLOCK START ### Fetch stats again on game reset if username exists ### NEW LINE/BLOCK END ###
-        if (username && username.trim()) {
-            fetchAndSetUserStats(username);
+        const currentTrimmedUsername = typeof username === 'string' ? username.trim() : '';
+        if (currentTrimmedUsername) {
+            fetchAndSetUserStats(currentTrimmedUsername); // Pass the current, known valid username
         }
     }, [username, fetchAndSetUserStats]);
 
@@ -118,15 +120,17 @@ const useGameStateManager = (clientId) => { // clientId is passed in (e.g. from 
         // This is useful if the backend canonicalizes the username (e.g., case)
         // or if the user is joining and didn't have a username set locally yet.
         const usernameFromServer = payload.username;
-        if (usernameFromServer && usernameFromServer !== username) {
-            console.log(`useGameStateManager: Updating username from server: ${usernameFromServer}`);
-            setUsername(usernameFromServer);
-            localStorage.setItem('sideStackerUsername', usernameFromServer);
-            // Stats will be fetched by the useEffect watching 'username'
-        } else if (!username && usernameFromServer) { // If local username was empty but server sends one
-            console.log(`useGameStateManager: Setting username from server: ${usernameFromServer}`);
-            setUsername(usernameFromServer);
-            localStorage.setItem('sideStackerUsername', usernameFromServer);
+        if (typeof usernameFromServer === 'string') {
+            const trimmedUsernameFromServer = usernameFromServer.trim();
+            if (trimmedUsernameFromServer && trimmedUsernameFromServer !== username) {
+                console.log(`useGameStateManager: Updating username from server: "${trimmedUsernameFromServer}"`);
+                setUsername(trimmedUsernameFromServer);
+                localStorage.setItem('sideStackerUsername', trimmedUsernameFromServer);
+            } else if (!username && trimmedUsernameFromServer) {
+                console.log(`useGameStateManager: Setting username from server (local was empty): "${trimmedUsernameFromServer}"`);
+                setUsername(trimmedUsernameFromServer);
+                localStorage.setItem('sideStackerUsername', trimmedUsernameFromServer);
+            }
         }
 
         setGameData({
@@ -229,8 +233,9 @@ const useGameStateManager = (clientId) => { // clientId is passed in (e.g. from 
             duration: 4000,
             isClosable: true,
         });
-        if (username && username.trim()) {
-            fetchAndSetUserStats(username);
+        const currentTrimmedUsername = typeof username === 'string' ? username.trim() : '';
+        if (currentTrimmedUsername) {
+            fetchAndSetUserStats(currentTrimmedUsername); // Pass the current, known valid username
         }
     }, [toast, gameState.players_map, gameData?.player_token, username, fetchAndSetUserStats]);
 
