@@ -1,6 +1,6 @@
 // frontend/src/services/socketService.js
 
-import { WS_MSG_TYPES, AI_DIFFICULTY, GAME_MODES } from '../constants/gameConstants';
+import { WS_MSG_TYPES, AI_DIFFICULTY, GAME_MODES, USERNAME_PAYLOAD_KEY } from '../constants/gameConstants';
 
 // --- Constants ---
 const DEFAULT_WS_BASE_URL = 'ws://localhost:8000/api/v1/ws-game/ws';
@@ -135,12 +135,16 @@ export const sendMessage = (messageObject) => {
 // --- Game Action Senders ---
 // These functions create and send specific message types.
 
-export const createGame = (mode = 'PVP', options = {}) => {
+export const createGame = (mode = GAME_MODES.PVP, options = {}, username = null) => {
     const upperCaseMode = mode.toUpperCase();
     const payload = {
-        player_temp_id: getClientId(), // Use the module-level generated client ID
+        player_temp_id: getClientId(),
         mode: upperCaseMode,
     };
+
+    if (username && (upperCaseMode === GAME_MODES.PVP || upperCaseMode === GAME_MODES.PVE)) { // Add username if provided and relevant mode
+        payload[USERNAME_PAYLOAD_KEY] = username;
+    }
 
     if (upperCaseMode === GAME_MODES.PVE) {
         if (typeof options === 'string' && options.trim() !== '') {
@@ -172,17 +176,21 @@ export const createGame = (mode = 'PVP', options = {}) => {
     sendMessage({ type: WS_MSG_TYPES.CREATE_GAME, payload });
 };
 
-export const joinGame = (gameIdToJoin) => {
-    if (!gameIdToJoin || String(gameIdToJoin).trim() === '') { // More robust check
+export const joinGame = (gameIdToJoin, username = null) => {
+    if (!gameIdToJoin || String(gameIdToJoin).trim() === '') {
         const errorMsg = "socketService: gameIdToJoin is required and cannot be empty for joinGame.";
         console.error(errorMsg);
-        if (onConnectionError) onConnectionError("Game ID is required to join."); // Or a more specific error type
-        return; // Prevent sending malformed message
+        if (onConnectionError) onConnectionError("Game ID is required to join.");
+        return;
     }
     const payload = {
         player_temp_id: getClientId(),
-        game_id: String(gameIdToJoin).trim(), // Ensure it's a string and trimmed
+        game_id: String(gameIdToJoin).trim(),
     };
+
+    if (username) { // Add username if provided
+        payload[USERNAME_PAYLOAD_KEY] = username;
+    }
     sendMessage({ type: WS_MSG_TYPES.JOIN_GAME, payload });
 };
 

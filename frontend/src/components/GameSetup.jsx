@@ -1,5 +1,5 @@
 // frontend/src/components/GameSetup.jsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     Box, Button, VStack, Heading, RadioGroup, Radio, Stack, Select, Text,
     Input,
@@ -23,8 +23,34 @@ const GameSetup = ({ setIsLoading, setError, isLoading }) => {
     const [joinGameId, setJoinGameId] = useState('');
     const toast = useToast();
 
+    const [username, setUsername] = useState('');
+
+    // Load username from localStorage on component mount
+    useEffect(() => {
+        const storedUsername = localStorage.getItem('sideStackerUsername');
+        if (storedUsername) {
+            setUsername(storedUsername);
+        }
+    }, []);
+
+    const handleUsernameChange = (e) => {
+        const newUsername = e.target.value;
+        setUsername(newUsername);
+        // Optionally, validate username format here if desired, though backend will also validate
+        if (newUsername.trim()) { // Save to localStorage if not empty
+            localStorage.setItem('sideStackerUsername', newUsername.trim());
+        } else {
+            localStorage.removeItem('sideStackerUsername'); // Clear if empty
+        }
+    };
+
     const handleCreateGame = async () => {
         setError(null);
+        if ((createGameMode === GAME_MODES.PVP || createGameMode === GAME_MODES.PVE) && !username.trim()) {
+            toast({ title: "Username Required", description: "Please enter a username to create or join a game.", status: "warning", duration: 3000, isClosable: true });
+            return;
+        }
+
         setIsLoading(true);
 
         let optionsForSocket = {};
@@ -35,13 +61,20 @@ const GameSetup = ({ setIsLoading, setError, isLoading }) => {
                 ai1_difficulty: avaAi1Difficulty,
                 ai2_difficulty: avaAi2Difficulty
             };
+
+
         }
         console.log(`Attempting to create game: Mode=${createGameMode}, Options=${JSON.stringify(optionsForSocket)}`);
-        createGame(createGameMode, optionsForSocket);
+        createGame(createGameMode, optionsForSocket, username.trim());
         // Loading/error state is handled by GamePage based on WebSocket responses
     };
 
     const handleJoinGame = async () => {
+
+        if (!username.trim()) {
+            toast({ title: "Username Required", description: "Please enter your username to join a game.", status: "warning", duration: 3000, isClosable: true });
+            return;
+        }
         if (!joinGameId.trim()) {
             toast({ title: "Game ID required", description: "Please enter a Game ID to join.", status: "warning", duration: 3000, isClosable: true });
             return;
@@ -49,12 +82,25 @@ const GameSetup = ({ setIsLoading, setError, isLoading }) => {
         setError(null);
         setIsLoading(true);
         console.log(`Attempting to join game: ID=${joinGameId}`);
-        joinGame(joinGameId.trim());
+        joinGame(joinGameId.trim(), username.trim());
         // Loading/error state is handled by GamePage based on WebSocket responses
     };
 
     return (
-        <Box p={5} shadow="md" borderWidth="1px" borderRadius="md" maxW="400px" mx="auto" mt="10vh">
+        <Box p={5} shadow="md" borderWidth="1px" borderRadius="md" maxW="md" mx="auto" mt="10vh">
+            <FormControl isRequired mb={6}> {/* isRequired for visual cue, actual validation in handlers */}
+                <FormLabel htmlFor="username-input">Your Username</FormLabel>
+                <Input
+                    id="username-input"
+                    placeholder="Enter your username (e.g., Player123)"
+                    value={username}
+                    onChange={handleUsernameChange}
+                    maxLength={50} // Match backend schema if desired
+                />
+                <Text fontSize="xs" color="gray.500" mt={1}>
+                    Used for game history. Will be remembered for next time.
+                </Text>
+            </FormControl>
             <Tabs index={tabIndex} onChange={(index) => setTabIndex(index)} variant="soft-rounded" colorScheme="teal">
                 <TabList mb={4} justifyContent="center">
                     <Tab>Create Game</Tab>

@@ -23,6 +23,8 @@ export const GAME_STATUS = {
 
 };
 
+export const USERNAME_PAYLOAD_KEY = "username";
+
 // Player Pieces
 export const PLAYER_PIECES = {
     X: 'X',
