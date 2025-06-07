@@ -34,6 +34,19 @@ AI_DIFFICULTY_EASY: str = "EASY"
 AI_DIFFICULTY_MEDIUM: str = "MEDIUM"
 AI_DIFFICULTY_HARD: str = "HARD"
 
+# Payload Keys (ensure these exist or add them)
+USERNAME_PAYLOAD_KEY: str = "username" # For CREATE_GAME, JOIN_GAME payloads
+
+# Stat field names (can be useful for type safety if not using Literal directly)
+STAT_WINS: str = "wins"
+STAT_LOSSES: str = "losses"
+STAT_DRAWS: str = "draws"
+STAT_ABANDONED: str = "abandoned_by_user"
+
+# Game Outcome reasons (if not already defined for disconnects)
+GAME_OVER_REASON_DISCONNECT: str = "opponent_disconnected"
+GAME_OVER_REASON_FORFEIT: str = "forfeit" # General term
+
 # DB Game Modes (Constructed, e.g., PVE_EASY, AVA_EASY_VS_MEDIUM)
 DB_GAME_MODE_PVE_PREFIX: str = "PVE_"
 DB_GAME_MODE_AVA_PREFIX: str = "AVA_"

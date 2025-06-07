@@ -18,6 +18,7 @@ from app.core import constants
 from app.db.models import Game  # For type hinting db_game
 
 from app.core.logging_config import setup_logger
+from app.services.game_stats_service import update_player_stats_on_game_end
 
 logger = setup_logger(__name__)
 
@@ -124,7 +125,7 @@ async def _handle_pve_ai_turn(db: Session, db_game: Game, active_game_id: str):
         winner_for_turn = constants.DRAW_WINNER_TOKEN_VALUE
         is_game_over_this_turn = True
 
-    final_db_game_state = crud_game.update_game_state(
+    updated_db_game_after_ai_move = crud_game.update_game_state(
         db=db,
         game_id=db_game.id,
         board_state=new_board_state_json,
@@ -134,17 +135,26 @@ async def _handle_pve_ai_turn(db: Session, db_game: Game, active_game_id: str):
         status=current_turn_status,
         winner_token=winner_for_turn,
     )
-    if not final_db_game_state:
+    if not updated_db_game_after_ai_move:
         await manager.broadcast_error_to_game(
             active_game_id, constants.SAVE_MOVE_FAILED_ERROR
         )
         return  # Game state save failed
 
-    final_board_to_broadcast = final_db_game_state.board_state.get("board", [])
+    final_board_to_broadcast_ai = updated_db_game_after_ai_move.board_state.get("board", [])
     if is_game_over_this_turn:
+        update_player_stats_on_game_end(
+            db,
+            updated_db_game_after_ai_move.player1_user_id, # Human player's user_id
+            None, # AI has no user_id
+            updated_db_game_after_ai_move.winner_token, # AI's token or 'draw'
+            updated_db_game_after_ai_move.player1_token, # Human's token
+            updated_db_game_after_ai_move.player2_token, # AI's token
+            is_draw=(updated_db_game_after_ai_move.status == constants.GAME_STATUS_DRAW)
+        )
         await manager.broadcast_game_over(
             active_game_id,
-            final_board_to_broadcast,
+            final_board_to_broadcast_ai,
             current_turn_status,
             winner_for_turn,
             (
@@ -163,7 +173,7 @@ async def _handle_pve_ai_turn(db: Session, db_game: Game, active_game_id: str):
         }
         await manager.broadcast_game_update(
             active_game_id,
-            final_board_to_broadcast,
+            final_board_to_broadcast_ai,
             next_player_token_if_active,
             last_move_payload,
         )

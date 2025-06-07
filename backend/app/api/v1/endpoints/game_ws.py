@@ -5,10 +5,13 @@ from sqlalchemy.orm import Session
 import json
 import uuid
 import asyncio
+from app.db.session import get_db, SessionLocal # 
+from app.crud import crud_game, crud_user, crud_user_stats
 
 from app.websockets.connection_manager import manager
 from app.db.session import get_db
 from app.crud import crud_game
+from app.services.game_stats_service import update_player_stats_on_game_end
 from app.services.game_logic import (
     Board as GameLogicBoard,
     apply_move,
@@ -37,9 +40,16 @@ async def handle_create_game_message(
 ) -> str | None:  # Returns active_game_id if successful, else None
     """Handles the CREATE_GAME WebSocket message."""
     player_human_token = payload.get(constants.PLAYER_TEMP_ID_PAYLOAD_KEY, client_id)
+    username = payload.get(constants.USERNAME_PAYLOAD_KEY)
     game_mode_from_payload = payload.get(
         constants.MODE_PAYLOAD_KEY, constants.GAME_MODE_PVP
     ).upper()
+
+    player1_user_id_for_db: uuid.UUID | None = None
+    if username and game_mode_from_payload != constants.GAME_MODE_AVA: # AI vs AI games don't have human users creating them
+        user_obj = crud_user.get_or_create_user(db, username=username)
+        player1_user_id_for_db = user_obj.id
+        logger.info(f"User '{username}' (ID: {player1_user_id_for_db}) is Player 1.")
 
     # --- Determine db_game_mode (PVP, PVE_DIFFICULTY, AVA_DIFF_VS_DIFF) ---
     db_game_mode = game_mode_from_payload
@@ -118,6 +128,7 @@ async def handle_create_game_message(
         player1_token = f"{constants.AI_PLAYER_TOKEN_PREFIX}{ai1_diff_for_token}{constants.AI_PLAYER_TOKEN_PLAYER1_SUFFIX}"
         player2_token = f"{constants.AI_PLAYER_TOKEN_PREFIX}{ai2_diff_for_token}{constants.AI_PLAYER_TOKEN_PLAYER2_SUFFIX}"
         initial_status = constants.GAME_STATUS_ACTIVE
+        player1_user_id_for_db = None
 
     # --- Create Game in DB ---
     db_game = crud_game.create_game_db(
@@ -126,6 +137,7 @@ async def handle_create_game_message(
         player2_token=player2_token,
         initial_current_player_token=player1_token,  # P1 or AI1 starts
         game_mode=db_game_mode,
+         player1_user_id=player1_user_id_for_db,
         # initial_status is set by create_game_db based on P2 presence
     )
     # Ensure status is correctly set if create_game_db doesn't handle it for PVE/AVA
@@ -165,6 +177,7 @@ async def handle_create_game_message(
                 "player_piece": player_piece_for_message,
                 "game_mode": db_game.game_mode,
                 "message": message_text,
+                "username": username if player1_user_id_for_db else None
             },
         },
         websocket,
@@ -374,6 +387,15 @@ async def handle_make_move_message(
     }
 
     if is_game_over_this_turn:
+        update_player_stats_on_game_end(
+            db,
+            updated_db_game_after_human_move.player1_user_id,
+            updated_db_game_after_human_move.player2_user_id,
+            updated_db_game_after_human_move.winner_token, # This is the game.winner_token field
+            updated_db_game_after_human_move.player1_token,
+            updated_db_game_after_human_move.player2_token,
+            is_draw=(current_turn_status == constants.GAME_STATUS_DRAW)
+        )
         await manager.broadcast_game_over(
             current_active_game_id,
             final_board_to_broadcast,
@@ -417,6 +439,7 @@ async def handle_join_game_message(
     """Handles the JOIN_GAME WebSocket message."""
     game_to_join_id_str = payload.get(constants.GAME_ID_PAYLOAD_KEY)
     player2_temp_id = payload.get(constants.PLAYER_TEMP_ID_PAYLOAD_KEY, client_id)
+    username = payload.get(constants.USERNAME_PAYLOAD_KEY)
 
     if not game_to_join_id_str:
         await manager.send_error(websocket, constants.JOIN_GAME_ID_MISSING_ERROR)
@@ -443,6 +466,12 @@ async def handle_join_game_message(
     if db_game.player1_token == player2_temp_id:
         await manager.send_error(websocket, constants.JOIN_AS_PLAYER2_IN_OWN_GAME_ERROR)
         return None
+    
+    player2_user_id_for_db: uuid.UUID | None = None
+    if username: # Only if username is provided
+        user_obj = crud_user.get_or_create_user(db, username=username)
+        player2_user_id_for_db = user_obj.id
+        logger.info(f"User '{username}' (ID: {player2_user_id_for_db}) is Player 2 joining game {game_to_join_id_str}.")
 
     # Successfully join the game as Player 2
     await manager.connect(
@@ -457,6 +486,7 @@ async def handle_join_game_message(
         db,
         game_id=game_to_join_uuid,
         player2_token=player2_temp_id,
+        player2_user_id=player2_user_id_for_db,
         status=new_status_on_join,
     )
     if not updated_db_game:
@@ -476,6 +506,7 @@ async def handle_join_game_message(
                 "opponent_token": updated_db_game.player1_token,
                 "game_mode": updated_db_game.game_mode,
                 "message": f"Successfully joined game. You are Player 2 ({constants.PLAYER_O}).",
+                "username": username if player2_user_id_for_db else None
             },
         },
         websocket,
@@ -578,39 +609,64 @@ async def handle_player_departure_in_active_game(
             return
 
         # Determine who the remaining player is and their piece
-        remaining_player_token = None
-        winning_piece_by_forfeit = None
+        remaining_player_token_for_win: str | None = None
+        winning_piece_by_forfeit: str | None = None
+        disconnected_user_id: uuid.UUID | None = None
+        winner_user_id_by_forfeit: uuid.UUID | None = None
 
         if db_game.player1_token == disconnected_player_token:
-            remaining_player_token = db_game.player2_token
+            remaining_player_token_for_win = db_game.player2_token
             winning_piece_by_forfeit = constants.PLAYER_O # P2 (O) wins if P1 (X) disconnects
+            disconnected_user_id = db_game.player1_user_id
+            winner_user_id_by_forfeit = db_game.player2_user_id
         elif db_game.player2_token == disconnected_player_token:
-            remaining_player_token = db_game.player1_token
+            remaining_player_token_for_win = db_game.player1_token
             winning_piece_by_forfeit = constants.PLAYER_X # P1 (X) wins if P2 (O) disconnects
+            disconnected_user_id = db_game.player2_user_id
+            winner_user_id_by_forfeit = db_game.player1_user_id
         else:
             # Disconnected client was not P1 or P2 (e.g., a spectator, or an already ended game)
             logger.info(f"Player {disconnected_player_token} was not an active player in game {game_id_str}. No forfeit.")
             return
 
-        if not remaining_player_token:
-            # This could happen in a PVE game if the human disconnects and AI is P2,
-            # or if game setup was incomplete. For PvP, remaining_player_token should exist.
-            logger.warning(f"Could not determine remaining player in game {game_id_str} after {disconnected_player_token} disconnected.")
-            # Potentially mark game as abandoned or error
-            crud_game.update_game_state(db, game_id=game_uuid, status="error_abandoned", current_player_token=None, winner_token=None)
+        if not remaining_player_token_for_win and not db_game.game_mode.startswith(constants.DB_GAME_MODE_PVE_PREFIX):
+            logger.warning(f"No remaining player token in PvP game {game_id_str} after {disconnected_player_token} disconnected. Marking abandoned.")
+            updated_game = crud_game.update_game_state(db, game_id=game_uuid, status="error_abandoned_pvp_no_opponent", current_player_token=None, winner_token=None)
             await manager.broadcast_error_to_game(game_id_str, "A player disconnected, game cannot continue.")
+
+            if disconnected_user_id and updated_game:
+                 update_player_stats_on_game_end(
+                    db,
+                    updated_game.player1_user_id,
+                    updated_game.player2_user_id,
+                    None, # No winner token
+                    updated_game.player1_token,
+                    updated_game.player2_token,
+                    is_draw=False, # Not a draw
+                    abandoned_by_user_id=disconnected_user_id
+                )
+            # ### NEW LINE/BLOCK END ###
             return
 
-        logger.info(f"Player {disconnected_player_token} disconnected from active game {game_id_str}. Player {remaining_player_token} wins by forfeit.")
+        logger.info(f"Player {disconnected_player_token} disconnected from active game {game_id_str}. Player {remaining_player_token_for_win} wins by forfeit.")
         
         new_status = constants.get_win_status(winning_piece_by_forfeit)
-        crud_game.update_game_state(
-            db,
-            game_id=game_uuid,
-            status=new_status,
-            winner_token=remaining_player_token,
-            current_player_token=None # Game is over
+        updated_game_after_disconnect = crud_game.update_game_state(
+            db, game_id=game_uuid, status=new_status,
+            winner_token=remaining_player_token_for_win, current_player_token=None
         )
+
+        if updated_game_after_disconnect: # Ensure game was updated
+            update_player_stats_on_game_end(
+                db,
+                updated_game_after_disconnect.player1_user_id,
+                updated_game_after_disconnect.player2_user_id,
+                updated_game_after_disconnect.winner_token, # This is the remaining player's token
+                updated_game_after_disconnect.player1_token,
+                updated_game_after_disconnect.player2_token,
+                is_draw=False,
+                abandoned_by_user_id=disconnected_user_id # ID of the user who abandoned
+            )
 
         # Fetch the final board state to broadcast
         final_board_state = db_game.board_state.get("board", service_create_board()) # Use current board, as no new move was made
@@ -619,7 +675,7 @@ async def handle_player_departure_in_active_game(
             game_id_str,
             final_board_state,
             new_status,
-            remaining_player_token,
+            remaining_player_token_for_win,
             winning_piece_by_forfeit,
             reason="opponent_disconnected"
         )
@@ -630,7 +686,7 @@ async def handle_player_departure_in_active_game(
 
 @router.websocket("/ws/{client_id}")
 async def websocket_endpoint(
-    websocket: WebSocket, client_id: str, db: Session = Depends(get_db)
+    websocket: WebSocket, client_id: str, # ### MODIFICATION START ### Remove Depends(get_db) ### MODIFICATION END ###
 ):
     await websocket.accept()
     logger.info(f"WebSocket connection accepted for client_id: {client_id}")
@@ -639,76 +695,62 @@ async def websocket_endpoint(
     try:
         while True:
             data = await websocket.receive_text()
+            message_type = None
             try:
                 message = json.loads(data)
                 message_type = message.get("type")
                 payload = message.get("payload", {})
-                # Log sparingly in production
-                logger.info(
-                    f"Msg from {client_id} in game {current_active_game_id or 'N/A'}: type={message_type}"
-                )
+                logger.info(f"Msg from {client_id} in game {current_active_game_id or 'N/A'}: type={message_type}")
 
-                if message_type == constants.WS_MSG_TYPE_CLIENT_CREATE_GAME:
-                    if current_active_game_id:
-                        disconnect_info = manager.websocket_to_ids.get(websocket)
-                        if (
-                            disconnect_info
-                            and disconnect_info["game_id"] == current_active_game_id
-                        ):
-                            manager.disconnect(
-                                websocket,
-                                disconnect_info["game_id"],
-                                disconnect_info["client_id"],
-                            )
-                        else:
-                            # Fallback if mapping isn't perfect or if client_id is from path and should be used
-                            manager.disconnect(
-                                websocket, current_active_game_id, client_id
-                            )
-                        current_active_game_id = None
-
-                    new_game_id = await handle_create_game_message(
-                        websocket, client_id, payload, db
-                    )
-                    current_active_game_id = new_game_id
-
-                elif message_type == constants.WS_MSG_TYPE_CLIENT_JOIN_GAME:
-                    if current_active_game_id:
-                        manager.disconnect(websocket, current_active_game_id)
-                    joined_game_id = await handle_join_game_message(
-                        websocket, client_id, payload, db
-                    )
-                    current_active_game_id = joined_game_id
-
-                elif message_type == constants.WS_MSG_TYPE_CLIENT_MAKE_MOVE:
-                    # Pass current_active_game_id so handler knows which game context
-                    result = await handle_make_move_message(
-                        websocket, client_id, current_active_game_id, payload, db
-                    )
-                    if result and result.get("invalidate_game_session"):
-                        current_active_game_id = None  # Clear if session became invalid
-                else:
-                    logger.warning(
-                        f"Unknown message type received from {client_id}: {message_type}"
-                    )
-                    await manager.send_error(
-                        websocket, f"Unknown message type: {message_type}"
-                    )
+                # ### NEW LINE/BLOCK START ### DB Session per message ### NEW LINE/BLOCK END ###
+                db_for_message: Session = SessionLocal()
+                result_from_handler = None # To catch invalidate_game_session signal
+                try:
+                # ### NEW LINE/BLOCK END ###
+                    if message_type == constants.WS_MSG_TYPE_CLIENT_CREATE_GAME:
+                        if current_active_game_id:
+                            # Disconnect from manager's perspective for the old game
+                            manager.disconnect(websocket, current_active_game_id, client_id)
+                            current_active_game_id = None
+                        # ### MODIFICATION START ### Pass db_for_message ### MODIFICATION END ###
+                        new_game_id = await handle_create_game_message(websocket, client_id, payload, db_for_message)
+                        # ### MODIFICATION END ###
+                        current_active_game_id = new_game_id
+                    elif message_type == constants.WS_MSG_TYPE_CLIENT_JOIN_GAME:
+                        if current_active_game_id:
+                            manager.disconnect(websocket, current_active_game_id, client_id)
+                            current_active_game_id = None # Reset before joining/creating new
+                        # ### MODIFICATION START ### Pass db_for_message ### MODIFICATION END ###
+                        joined_game_id = await handle_join_game_message(websocket, client_id, payload, db_for_message)
+                        # ### MODIFICATION END ###
+                        current_active_game_id = joined_game_id
+                    elif message_type == constants.WS_MSG_TYPE_CLIENT_MAKE_MOVE:
+                        # ### MODIFICATION START ### Pass db_for_message ### MODIFICATION END ###
+                        result_from_handler = await handle_make_move_message(
+                            websocket, client_id, current_active_game_id, payload, db_for_message
+                        )
+                        # ### MODIFICATION END ###
+                    else:
+                        logger.warning(f"Unknown message type received from {client_id}: {message_type}")
+                        await manager.send_error(websocket, f"Unknown message type: {message_type}")
+                    
+                    # ### NEW LINE/BLOCK START ### Check for invalidate_game_session from handler ### NEW LINE/BLOCK END ###
+                    if result_from_handler and result_from_handler.get("invalidate_game_session"):
+                        current_active_game_id = None # Clear if handler signaled session became invalid
+                    # ### NEW LINE/BLOCK END ###
+                # ### NEW LINE/BLOCK START ### Ensure DB session for message is closed ### NEW LINE/BLOCK END ###
+                finally:
+                    db_for_message.close()
+                # ### NEW LINE/BLOCK END ###
 
             except json.JSONDecodeError:
                 logger.warning(f"Invalid JSON received from {client_id}: {data}")
                 await manager.send_error(websocket, "Invalid JSON format.")
-            except Exception as e:  # Catch exceptions within message processing loop
-                logger.error(
-                    f"Error processing message from {client_id} (type: {message.get('type', 'unknown')}): {e}"
-                )
-                # Add more detailed logging here, e.g., traceback.format_exc()
+            except Exception as e:
+                logger.error(f"Error processing message from {client_id} (type: {message_type}): {e}", exc_info=True)
                 await manager.send_error(websocket, "Error processing your request.")
 
     except WebSocketDisconnect:
-        # client_id here is the path parameter client_id
-        # We need the game_id and the specific client_id that was associated with *this websocket* in that game
-        
         disconnect_context = manager.websocket_to_ids.get(websocket)
         game_id_of_disconnected_ws = None
         client_id_of_disconnected_ws = None
@@ -720,33 +762,31 @@ async def websocket_endpoint(
         else:
             logger.info(f"Client {client_id} (WebSocket: {websocket}) disconnected. No game context found in manager for this websocket.")
 
-        manager.disconnect(websocket) # Clean up from ConnectionManager
+        manager.disconnect(websocket)
 
-        # Now, handle game-specific logic if they were in an active game
         if game_id_of_disconnected_ws and client_id_of_disconnected_ws:
-            # Run this as a background task so it doesn't block the disconnect cleanup
-            # and has its own DB session if needed (handle_player_departure_in_active_game should manage its own session)
-            # For simplicity now, calling directly. For production, consider background task.
-            # You'd need a way to pass a DB session or have the handler create one.
-            # For now, assuming 'db' from Depends(get_db) is still valid for this short operation.
-            # If handle_player_departure_in_active_game uses SessionLocal(), it's fine.
-            await handle_player_departure_in_active_game(game_id_of_disconnected_ws, client_id_of_disconnected_ws, db)
-        
-        current_active_game_id = None # Clear for this connection instance
-    except Exception as e:  # Catch exceptions in the main WebSocket loop
-        logger.error(f"Unhandled exception in WebSocket endpoint for {client_id}: {e}")
-        # Attempt to close gracefully if possible
+            # ### NEW LINE/BLOCK START ### DB Session for disconnect handling ### NEW LINE/BLOCK END ###
+            db_for_disconnect: Session = SessionLocal()
+            try:
+                await handle_player_departure_in_active_game(
+                    game_id_of_disconnected_ws,
+                    client_id_of_disconnected_ws, # Use client_id from game room context
+                    db_for_disconnect
+                )
+            finally:
+                db_for_disconnect.close()
+            # ### NEW LINE/BLOCK END ###
+        current_active_game_id = None
+    except Exception as e:
+        logger.error(f"Unhandled exception in WebSocket endpoint for {client_id}: {e}", exc_info=True)
         try:
-            await websocket.close(code=1011)  # Internal server error
-        except RuntimeError:  # If already closed or cannot close
+            await websocket.close(code=1011)
+        except RuntimeError:
             pass
     finally:
         logger.info(f"WebSocket for client {client_id} (instance: {websocket}) entering finally block. Current game: {current_active_game_id or 'N/A'}")
-        # The manager.disconnect(websocket) will use its internal websocket_to_ids mapping
-        # to find the correct game_id and client_id for cleanup if this websocket is known.
-        # This handles cases where the loop exited due to an error before explicit disconnect.
-        if manager.websocket_to_ids.get(websocket): # Check if this websocket is even known to the manager
-             logger.info(f"Performing cleanup disconnect for websocket {websocket} via finally block.")
-             manager.disconnect(websocket) # This is synchronous
+        if manager.websocket_to_ids.get(websocket):
+             logger.info(f"Performing cleanup disconnect for websocket {websocket} via finally block (game_ws).")
+             manager.disconnect(websocket)
         else:
-             logger.info(f"Websocket {websocket} not found in manager's active mappings; no explicit disconnect from manager needed in finally.")
+             logger.info(f"Websocket {websocket} not found in manager's active mappings in game_ws finally; no explicit disconnect needed.")

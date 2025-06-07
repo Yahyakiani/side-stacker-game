@@ -51,6 +51,8 @@ def create_game_db(
     player2_token: Optional[str] = None,
     game_mode: str = "PVP",
     initial_current_player_token: Optional[str] = None,
+    player1_user_id: Optional[uuid.UUID] = None, # <<< NEW
+    player2_user_id: Optional[uuid.UUID] = None  # <<< NEW
 ) -> Game:
     """
     Creates a new game in the database.
@@ -75,6 +77,8 @@ def create_game_db(
             else "active"
         ),
         game_mode=game_mode,
+        player1_user_id=player1_user_id, 
+        player2_user_id=player2_user_id  
     )
     db.add(db_game)
     db.commit()
@@ -91,6 +95,8 @@ def update_game_state(
     winner_token: Optional[str] = "SENTINEL_DEFAULT",  # Use a sentinel
     player1_token: Optional[str] = "SENTINEL_DEFAULT",  # Use a sentinel
     player2_token: Optional[str] = "SENTINEL_DEFAULT",  # Use a sentinel
+    player1_user_id: Optional[uuid.UUID] = "SENTINEL_DEFAULT", # <<< NEW
+    player2_user_id: Optional[uuid.UUID] = "SENTINEL_DEFAULT"  # <<< NEW
 ) -> Optional[Game]:
     db_game = get_game(db, game_id)
     if not db_game:
@@ -125,6 +131,14 @@ def update_game_state(
 
     if player2_token != "SENTINEL_DEFAULT":  # Only update if not sentinel
         db_game.player2_token = player2_token
+        updated_fields_count += 1
+    
+    if player1_user_id != "SENTINEL_DEFAULT": # <<< NEW
+        db_game.player1_user_id = player1_user_id
+        updated_fields_count += 1
+        
+    if player2_user_id != "SENTINEL_DEFAULT": # <<< NEW
+        db_game.player2_user_id = player2_user_id
         updated_fields_count += 1
 
     if updated_fields_count == 0:

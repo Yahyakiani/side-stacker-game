@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.v1.endpoints import temp_game_http # Import the new router
 from app.api.v1.endpoints import game_ws
+from app.api.v1.endpoints import user_stats
 
 from app.core.logging_config import setup_logger, LOG_LEVEL
 
@@ -69,6 +70,14 @@ logger.info(
 app.include_router(
     game_ws.router, prefix=f"{settings.API_V1_STR}/ws-game", tags=["Game WebSocket"]
 )
+
+
+app.include_router(
+    user_stats.router,
+    prefix=settings.API_V1_STR, # Assuming /api/v1/users/{username}/stats
+    tags=["User Statistics"]
+)
+logger.info(f"Included user statistics router at prefix: {settings.API_V1_STR}")
 
 if __name__ == "__main__":
 
